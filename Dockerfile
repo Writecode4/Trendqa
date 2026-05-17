@@ -8,14 +8,12 @@ RUN apt-get update && apt-get install -y \
     libxslt-dev \
     libffi-dev \
     libssl-dev \
-    && pip install --no-cache-dir lxml xhtml2pdf \
-    && apt-get remove -y gcc libxml2-dev libxslt-dev libffi-dev libssl-dev \
-    && apt-get autoremove -y \
-    && apt-get install -y libxml2 libxslt1.1 libffi8 libssl3 \
+    python3-dev \
+    cargo \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -v -r requirements.txt
 
 COPY . .
 
