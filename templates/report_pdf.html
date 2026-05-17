@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>TrendQA Report</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <style>
+    body { background: white; color: #111827; font-family: Arial, sans-serif; }
+    .container { max-width: 1000px; }
+    .hero, .summary-meta, .actions { display: none; }
+    .card, .panel { background: #fff; color: #111827; border: 1px solid #e5e7eb; }
+    .highlight { border-left: 4px solid #2563eb; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #d1d5db; padding: 8px; }
+    th { background: #f3f4f6; }
+    .pdf-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #0496FF; }
+    .pdf-header img { height: 32px; width: auto; }
+    .pdf-header .pdf-brand { font-size: 1.5rem; font-weight: 600; color: #111827; font-family: Georgia, 'Book Old Style', serif; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="pdf-header">
+      <img src="{{ url_for('static', filename='images/logo-sikuri.png') }}" alt="SIKURI" onerror="this.style.display='none'" style="height:32px;">
+      <span class="pdf-brand">SIKURI</span>
+    </div>
+    <h1>TrendQA &mdash; Resumen ejecutivo de tendencias</h1>
+    <p><strong>Período:</strong> {{ summary.period }}</p>
+    <p><strong>Tema:</strong> {{ summary.topic }}</p>
+    <p><strong>Total de preguntas:</strong> {{ summary.total_questions }}</p>
+
+    <div class="cards">
+      <div class="card highlight">
+        <h2>Hallazgo principal</h2>
+        <p>{{ summary.main_finding }}</p>
+      </div>
+
+      <div class="card">
+        <h2>Oportunidad</h2>
+        <p>{{ summary.opportunity }}</p>
+      </div>
+
+      <div class="card">
+        <h2>Riesgos o fricciones</h2>
+        <p>{{ summary.risks }}</p>
+      </div>
+
+      <div class="card">
+        <h2>Recomendación</h2>
+        <p>{{ summary.recommendation }}</p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Preguntas destacadas</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Pregunta</th>
+            <th>Categoría</th>
+            <th>Fuente</th>
+            <th>Confianza</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in summary.top_items %}
+          <tr>
+            <td>{{ item.question }}</td>
+            <td>{{ item.category }}</td>
+            <td>{{ item.source_type }}</td>
+            <td>{{ "%.2f"|format(item.confidence|float) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div style="text-align:center;padding-top:24px;font-size:0.8rem;color:#9ca3af;border-top:1px solid #e5e7eb;margin-top:24px;">
+    &copy; 2026 SIKURI &mdash; Generado por TrendQA
+  </div>
+</body>
+</html>

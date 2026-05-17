@@ -1,0 +1,23 @@
+# Entorno virtual
+envQA/
+venv/
+.env
+
+# Base de datos
+*.db
+
+# Cache
+__pycache__/
+*.pyc
+
+# Outputs
+output/
+reports/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store

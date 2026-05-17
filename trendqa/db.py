@@ -1,0 +1,252 @@
+import sqlite3
+import os
+from datetime import datetime
+
+
+class Database:
+    def __init__(self, db_name="trendqa.db"):
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.db_path = os.path.join(base_dir, db_name)
+        self.init_db()
+
+    def get_connection(self):
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn
+
+    def column_exists(self, conn, table_name, column_name):
+        cursor = conn.cursor()
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        return column_name in [row[1] for row in cursor.fetchall()]
+
+    def init_db(self):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS sources (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    source_type TEXT NOT NULL,
+                    base_url TEXT,
+                    active INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS items (
+                    id TEXT PRIMARY KEY,
+                    source_id INTEGER,
+                    title TEXT,
+                    content TEXT,
+                    url TEXT UNIQUE,
+                    author TEXT,
+                    created_utc REAL,
+                    created_at TEXT,
+                    raw_json TEXT,
+                    item_type TEXT,
+                    scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    processed_at TIMESTAMP,
+                    FOREIGN KEY (source_id) REFERENCES sources (id) ON DELETE SET NULL
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS questions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    item_id TEXT NOT NULL,
+                    question TEXT NOT NULL,
+                    category TEXT,
+                    confidence REAL,
+                    model_used TEXT,
+                    analyzed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (item_id) REFERENCES items (id) ON DELETE CASCADE
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS trend_terms (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    keyword TEXT NOT NULL,
+                    related_top TEXT,
+                    related_rising TEXT,
+                    autocomplete TEXT,
+                    interest_over_time TEXT,
+                    geo TEXT DEFAULT 'PY',
+                    captured_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS reports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    topic TEXT NOT NULL,
+                    period_label TEXT,
+                    summary_json TEXT NOT NULL,
+                    generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS processing_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    step TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    message TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_items_source_id ON items(source_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_items_created_utc ON items(created_utc)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_items_processed_at ON items(processed_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_questions_item_id ON questions(item_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_questions_analyzed_at ON questions(analyzed_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_trend_terms_keyword ON trend_terms(keyword)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_reports_topic ON reports(topic)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_processing_log_step ON processing_log(step)")
+
+            conn.commit()
+
+    def ensure_source(self, name, source_type, base_url=None):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR IGNORE INTO sources (name, source_type, base_url)
+                VALUES (?, ?, ?)
+            """, (name, source_type, base_url))
+            conn.commit()
+
+            cursor.execute("SELECT id FROM sources WHERE name = ?", (name,))
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+    def save_item(self, item):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR IGNORE INTO items
+                (id, source_id, title, content, url, author, created_utc, created_at, raw_json, item_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                item.get("id"),
+                item.get("source_id"),
+                item.get("title"),
+                item.get("content"),
+                item.get("url"),
+                item.get("author"),
+                item.get("created_utc"),
+                item.get("created_at"),
+                item.get("raw_json"),
+                item.get("item_type", "post")
+            ))
+            conn.commit()
+
+    def mark_item_processed(self, item_id):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE items
+                SET processed_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (item_id,))
+            conn.commit()
+
+    def save_question(self, item_id, question, category, confidence=None, model_used=None):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO questions (item_id, question, category, confidence, model_used)
+                VALUES (?, ?, ?, ?, ?)
+            """, (item_id, question, category, confidence, model_used))
+            conn.commit()
+
+    def save_trend_term(self, keyword, related_top=None, related_rising=None, autocomplete=None, interest_over_time=None, geo="PY"):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO trend_terms
+                (keyword, related_top, related_rising, autocomplete, interest_over_time, geo)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                keyword,
+                related_top,
+                related_rising,
+                autocomplete,
+                interest_over_time,
+                geo
+            ))
+            conn.commit()
+
+    def save_report(self, topic, period_label, summary_json):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO reports (topic, period_label, summary_json)
+                VALUES (?, ?, ?)
+            """, (topic, period_label, summary_json))
+            conn.commit()
+
+    def log_step(self, step, status, message=None):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO processing_log (step, status, message)
+                VALUES (?, ?, ?)
+            """, (step, status, message))
+            conn.commit()
+
+    def get_unprocessed_items(self):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, title, content
+                FROM items
+                WHERE processed_at IS NULL
+            """)
+            return cursor.fetchall()
+
+    def get_all_questions_with_items(self):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT q.question, q.category, q.confidence, q.model_used,
+                       i.title, i.url, i.item_type, i.scraped_at, s.name, s.source_type
+                FROM questions q
+                JOIN items i ON q.item_id = i.id
+                LEFT JOIN sources s ON i.source_id = s.id
+                ORDER BY q.analyzed_at DESC
+            """)
+            return cursor.fetchall()
+
+    def get_latest_report(self, topic=None):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            if topic:
+                cursor.execute("""
+                    SELECT summary_json, generated_at
+                    FROM reports
+                    WHERE topic = ?
+                    ORDER BY generated_at DESC
+                    LIMIT 1
+                """, (topic,))
+            else:
+                cursor.execute("""
+                    SELECT summary_json, generated_at
+                    FROM reports
+                    ORDER BY generated_at DESC
+                    LIMIT 1
+                """)
+            return cursor.fetchone()
+
+    def get_trend_terms(self, limit=50):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT keyword, related_top, related_rising, autocomplete, interest_over_time, geo, captured_at
+                FROM trend_terms
+                ORDER BY captured_at DESC
+                LIMIT ?
+            """, (limit,))
+            return cursor.fetchall()
