@@ -9,11 +9,14 @@ RUN apt-get update && apt-get install -y \
     libffi-dev \
     libssl-dev \
     python3-dev \
-    cargo \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -v -r requirements.txt
+
+RUN pip install --no-cache-dir \
+    --only-binary=cryptography \
+    --only-binary=lxml \
+    -r requirements.txt
 
 COPY . .
 
