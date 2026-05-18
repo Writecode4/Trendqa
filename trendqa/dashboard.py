@@ -599,11 +599,7 @@ def dashboard():
     return render_template("dashboard.html", summary=summary)
 
 
-@dashboard_bp.route("/report")
-def report():
-    q = request.args.get("q", "courier paraguay")
-    summary = run_pipeline(q)
-    return render_template("report_pdf.html", summary=summary)
+
 
 
 

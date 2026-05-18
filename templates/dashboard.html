@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TrendQA Dashboard</title>
-  <<link rel="stylesheet" href="https://sikuri.lat/css/style.css">
+  <link rel="stylesheet" href="https://sikuri.lat/css/style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <style>
     body { padding-top: 64px; }
@@ -58,7 +58,6 @@
       <div class="nav-links">
         <a href="/" class="nav-link">Inicio</a>
         <a href="/dashboard" class="nav-link active">Dashboard</a>
-        <a href="/report" class="nav-link">Informe</a>
       </div>
     </div>
   </nav>
@@ -70,7 +69,7 @@
       </div>
       <div class="actions">
         <a class="btn" href="/dashboard">Dashboard</a>
-        <button class="btn" onclick="descargarPDF()">Descargar PDF</button>
+        <button class="btn" onclick="imprimirPDF()">Descargar PDF</button>
       </div>
     </header>
 
@@ -325,7 +324,7 @@
     });
   }
   </script>
-<button class="btn btn-primary" onclick="imprimirPDF()">Descargar PDF</button>
+
 
 <script>
 function imprimirPDF() {
