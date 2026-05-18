@@ -33,6 +33,20 @@
     .legend-dot { width: 10px; height: 10px; display: inline-block; }
     @media (max-width: 768px) { .chart-grid { grid-template-columns: 1fr; } }
   </style>
+  <style>
+    @media print {
+      nav, .actions, button { display: none !important; }
+      body { background: white !important; color: black !important; padding: 0 !important; }
+      .container { max-width: 100% !important; }
+      .finding-card, .q-card, .chart-box {
+        background: white !important;
+        border: 1px solid #ccc !important;
+        color: black !important;
+        break-inside: avoid;
+      }
+      * { color: black !important; }
+    }
+  </style>
 </head>
 <body>
   <nav class="navbar">
@@ -55,8 +69,8 @@
         <p>{{ summary.topic }}</p>
       </div>
       <div class="actions">
-        <a class="btn" href="/report" target="_blank">Ver informe</a>
-        <a class="btn btn-primary" href="/download-report">Descargar PDF</a>
+        <a class="btn" href="/dashboard">Dashboard</a>
+        <button class="btn" onclick="descargarPDF()">Descargar PDF</button>
       </div>
     </header>
 
@@ -311,5 +325,35 @@
     });
   }
   </script>
-</body>
+<button class="btn btn-primary" onclick="imprimirPDF()">Descargar PDF</button>
+
+<script>
+function imprimirPDF() {
+  const canvases = document.querySelectorAll('canvas');
+  const imagenes = [];
+
+  canvases.forEach(function(canvas) {
+    const img = document.createElement('img');
+    img.src = canvas.toDataURL('image/png');
+    img.style.width = '100%';
+    img.style.maxHeight = '220px';
+    img.style.objectFit = 'contain';
+    canvas.parentNode.insertBefore(img, canvas);
+    canvas.style.display = 'none';
+    imagenes.push({ canvas, img });
+  });
+
+  // Esperar que las imágenes carguen antes de imprimir
+  setTimeout(function() {
+    window.print();
+    // Restaurar canvas después
+    setTimeout(function() {
+      imagenes.forEach(function(par) {
+        par.canvas.style.display = '';
+        par.img.remove();
+      });
+    }, 1000);
+  }, 500);
+}
+</script></body>
 </html>

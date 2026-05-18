@@ -75,8 +75,30 @@
       </table>
     </div>
   </div>
+  <!-- Botón de descarga -->
+<div style="text-align:center; margin: 20px 0;">
+  <button onclick="descargarPDF()" style="background:#0496FF; color:white; border:none; padding:10px 24px; border-radius:6px; font-size:1rem; cursor:pointer;">
+    Descargar PDF
+  </button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script>
+  function descargarPDF() {
+    const elemento = document.querySelector('.container');
+    const opciones = {
+      margin: 10,
+      filename: 'trendqa-informe.pdf',
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    html2pdf().set(opciones).from(elemento).save();
+  }
+</script>
   <div style="text-align:center;padding-top:24px;font-size:0.8rem;color:#9ca3af;border-top:1px solid #e5e7eb;margin-top:24px;">
     &copy; 2026 SIKURI &mdash; Generado por TrendQA
   </div>
+
 </body>
 </html>

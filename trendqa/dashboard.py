@@ -603,24 +603,7 @@ def dashboard():
 def report():
     q = request.args.get("q", "courier paraguay")
     summary = run_pipeline(q)
-
-    out_dir = BASE / "output"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / "report.pdf"
-
-    PDFExporter(base_dir=str(BASE)).export_summary(summary, out_path)
-    return send_file(out_path, as_attachment=True)
+    return render_template("report_pdf.html", summary=summary)
 
 
-@dashboard_bp.route("/download-report")
-def download_report():
-    q = request.args.get("q", "courier paraguay")
-    summary = run_pipeline(q)
-
-    out_dir = BASE / "output"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / "report.pdf"
-
-    PDFExporter(base_dir=str(BASE)).export_summary(summary, out_path)
-    return send_file(out_path, as_attachment=True)
 
