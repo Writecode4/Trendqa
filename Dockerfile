@@ -1,28 +1,33 @@
-# ---------- Etapa 1: Builder ----------
-FROM python:3.11-alpine AS builder
+# Fase build: instala dependencias y copia el código
+FROM python:3.11-alpine AS build
 
 WORKDIR /app
 
-# Copiar solo requirements.txt primero (para aprovechar caché)
 COPY requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt
 
-# Instalar dependencias en un directorio temporal (--prefix o --target)
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
-
-# ---------- Etapa 2: Final ----------
-FROM python:3.11-alpine
-
-WORKDIR /app
-
-# Copiar las dependencias instaladas desde la etapa builder
-COPY --from=builder /install /usr/local
-
-# Copiar el resto del código de la aplicación
 COPY . .
 
-# Variables de entorno (igual que en el original)
+
+# Fase runtime: imagen final minimalista
+FROM python:3.11-alpine AS runtime
+
+WORKDIR /app
+
+# Copia solo /root/.local desde el user install de pip
+COPY --from=build --chown=app:app /root/.local /root/.local
+
+# Copia solo código fuente necesario (evita .git, __pycache__, etc.)
+COPY --chown=app:app . .
+
+# Variables de entorno
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PATH=/root/.local/bin:$PATH
+
+# Crear usuario no root
+RUN adduser --disabled-password --gecos '' app
+USER app
 
 EXPOSE 5000
 
