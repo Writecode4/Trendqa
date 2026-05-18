@@ -1,0 +1,14 @@
+envQA/
+venv/
+.env
+__pycache__/
+*.pyc
+*.pyo
+output/
+reports/
+.vscode/
+.idea/
+*.db
+.git
+Thumbs.db
+.DS_Store
