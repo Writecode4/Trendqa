@@ -4,5 +4,4 @@ feedparser>=6.0
 groq>=0.12
 python-dotenv>=1.0
 pytrends>=4.9
-reportlab>=4.1
 beautifulsoup4>=4.12

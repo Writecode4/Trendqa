@@ -21,3 +21,6 @@ reports/
 # OS
 Thumbs.db
 .DS_Store
+
+#informepdf
+trendqa/services/pdf_export.py

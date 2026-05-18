@@ -11,7 +11,7 @@ from trendqa.ingest.trends import GoogleTrendsIngestor
 from trendqa.ingest.faq import FAQIngestor
 from trendqa.ingest.reviews import ReviewsIngestor
 from trendqa.processing.analyzer import QuestionAnalyzer, TrendAnalyzer
-from trendqa.services.pdf_export import PDFExporter
+#from trendqa.services.pdf_export import PDFExporter
 
 dashboard_bp = Blueprint("dashboard", __name__)
 

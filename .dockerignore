@@ -12,3 +12,4 @@ reports/
 .git
 Thumbs.db
 .DS_Store
+trendqa/services/pdf_export.py
