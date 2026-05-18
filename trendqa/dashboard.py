@@ -604,13 +604,11 @@ def report():
     q = request.args.get("q", "courier paraguay")
     summary = run_pipeline(q)
 
-    html = render_template("report_pdf.html", summary=summary)
-
     out_dir = BASE / "output"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "report.pdf"
 
-    PDFExporter().export_string(html, out_path, base_url=str(BASE))
+    PDFExporter(base_dir=str(BASE)).export_summary(summary, out_path)
     return send_file(out_path, as_attachment=True)
 
 
@@ -619,12 +617,10 @@ def download_report():
     q = request.args.get("q", "courier paraguay")
     summary = run_pipeline(q)
 
-    html = render_template("report_pdf.html", summary=summary)
-
     out_dir = BASE / "output"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "report.pdf"
 
-    PDFExporter().export_string(html, out_path, base_url=str(BASE))
+    PDFExporter(base_dir=str(BASE)).export_summary(summary, out_path)
     return send_file(out_path, as_attachment=True)
 
