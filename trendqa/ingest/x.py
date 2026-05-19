@@ -1,3 +1,4 @@
+import re
 import requests
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
@@ -11,6 +12,9 @@ NITTER_INSTANCES = [
     "https://nitter.freedit.eu",
     "https://nitter.lqdv.xyz",
     "https://nitter.esmaeilpour.xyz",
+    "https://nitter.unixfox.eu",
+    "https://nitter.sethforprivacy.com",
+    "https://nitter.catsarchy.xyz",
 ]
 
 
@@ -46,47 +50,107 @@ class XIngestor:
         soup = BeautifulSoup(r.text, "html.parser")
         items = []
         seen = set()
-        tweets = soup.find_all("div", class_="timeline-item")
-        if not tweets:
-            tweets = soup.select("div[class*='tweet']")
-        for tweet in tweets:
+
+        tweet_blocks = (
+            soup.find_all("div", class_="timeline-item")
+            or soup.select("div[class*='tweet']")
+            or soup.select("div[class*='timeline'] > div")
+            or soup.find_all("div", class_=re.compile(r"tweet|timeline|status"))
+            or soup.find_all("article")
+            or [soup]
+        )
+
+        for tweet in tweet_blocks:
             if len(items) >= max_results:
                 break
-            content_el = tweet.select_one(".tweet-content")
-            if not content_el:
+
+            text = ""
+            for sel in (
+                ".tweet-content",
+                "div[class*='content'] p",
+                "p",
+                "div[class*='text']",
+                "span[class*='text']",
+                "div[class*='message']",
+                "div[class*='body']",
+            ):
+                el = tweet.select_one(sel)
+                if el:
+                    text = el.get_text(strip=True)
+                    if len(text) > 10:
+                        break
+
+            if not text or len(text) < 5:
                 continue
-            text = content_el.get_text(strip=True)
-            if not text or text in seen:
+            if text in seen:
                 continue
             seen.add(text)
+
             tid = tweet.get("id", "") or str(hash(text))
-            author_el = tweet.select_one(".username") or tweet.select_one("a[href*='/']")
+
             author = ""
-            if author_el:
-                author = author_el.get_text(strip=True).lstrip("@")
-            url_el = tweet.select_one("a.tweet-link") or tweet.select_one("a[href*='/status/']")
-            tweet_url = ""
-            if url_el:
-                href = url_el.get("href", "")
-                if href.startswith("/"):
-                    href = instance + href
-                tweet_url = href
-            date_el = tweet.select_one(".tweet-date a") or tweet.select_one("time")
-            created_str = ""
-            if date_el:
-                created_str = date_el.get("datetime", "") or date_el.get_text(strip=True)
-            created_dt = None
-            try:
-                for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
-                    try:
-                        created_dt = datetime.strptime(created_str[:19].replace("T", " "), fmt)
+            for sel in (
+                ".username",
+                "a[href*='/']",
+                "span[class*='name']",
+                "div[class*='author']",
+                "a[class*='user']",
+            ):
+                el = tweet.select_one(sel)
+                if el:
+                    candidate = el.get_text(strip=True).lstrip("@")
+                    if candidate and len(candidate) < 50 and not candidate.startswith("http"):
+                        author = candidate
                         break
-                    except ValueError:
+
+            tweet_url = ""
+            for sel in (
+                "a.tweet-link",
+                "a[href*='/status/']",
+                "a[class*='link']",
+                "a[href]",
+            ):
+                el = tweet.select_one(sel)
+                if el:
+                    href = el.get("href", "")
+                    if href and "/status/" in href:
+                        if href.startswith("/"):
+                            href = instance + href
+                        tweet_url = href
+                        break
+
+            created_dt = None
+            created_str = ""
+            for sel in (
+                ".tweet-date a",
+                "time",
+                "span[class*='date']",
+                "a[class*='date']",
+                "span[class*='time']",
+            ):
+                el = tweet.select_one(sel)
+                if el:
+                    created_str = el.get("datetime", "") or el.get("title", "") or el.get_text(strip=True)
+                    if created_str:
+                        break
+
+            if created_str:
+                for fmt in (
+                    "%Y-%m-%dT%H:%M:%S%z",
+                    "%Y-%m-%dT%H:%M:%S",
+                    "%Y-%m-%d %H:%M:%S",
+                    "%Y-%m-%d",
+                ):
+                    try:
+                        cleaned = created_str[:19].replace("T", " ")
+                        created_dt = datetime.strptime(cleaned, fmt)
+                        break
+                    except Exception:
                         continue
-            except Exception:
-                pass
+
             if created_dt and created_dt < self.limit_date:
                 continue
+
             items.append({
                 "id": f"x_scrape_{tid}",
                 "title": text[:120],
@@ -94,7 +158,7 @@ class XIngestor:
                 "url": tweet_url,
                 "author": author,
                 "created_utc": created_dt.timestamp() if created_dt else None,
-                "created_at": created_str,
+                "created_at": created_str or datetime.now().isoformat(),
                 "raw_json": None,
                 "item_type": "tweet",
                 "source_name": "X (Twitter)",
