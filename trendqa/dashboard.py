@@ -270,7 +270,7 @@ RECOMMENDED_ACTIONS = {
         "faq": ("Incluir sección en FAQ interna.", "contenido"),
         "review": ("Derivar a compras y crear contenido sobre alianzas.", "contenido"),
     },
-    "experiencia": {
+    "experiencia_cliente": {
         "default": ("Derivar a CX y mejorar servicio si hay queja recurrente.", "servicio"),
         "reddit": ("Empatizar, escalar internamente y activar anuncios de mejora.", "anuncios"),
         "faq": ("Si recurre, crear contenido específico.", "contenido"),
@@ -304,7 +304,7 @@ def _recommended_action(category, source_type, confidence):
     return {"texto": texto, "tipo": tipo, "badge": badge}
 
 
-CHURN_CATEGORIAS_ALTAS = {"experiencia", "garantia_devolucion"}
+CHURN_CATEGORIAS_ALTAS = {"experiencia_cliente", "garantia_devolucion"}
 CHURN_KEYWORDS = [
     "devolver", "cancelar", "queja", "mal servicio", "estafa", "robo",
     "no funciona", "pésimo", "horrible", "nunca", "mentira", "no recomiendo",
@@ -347,7 +347,7 @@ OPORTUNIDAD_PONDERACION = {
 SOLUCIONABILIDAD = {
     "envios": 3, "pagos": 3, "precios": 2,
     "garantia_devolucion": 2, "productos": 2,
-    "proveedores": 1, "experiencia": 1, "otros": 0,
+    "proveedores": 1, "experiencia_cliente": 1, "otros": 0,
 }
 
 CAT_BUSINESS_IMPACT = {
@@ -357,7 +357,7 @@ CAT_BUSINESS_IMPACT = {
     "garantia_devolucion": "Evita pérdida de clientes por desconfianza",
     "productos": "Genera ventas si se mejora presentación de catálogo",
     "proveedores": "Reduce costos si se optimiza cadena de suministro",
-    "experiencia": "Aumenta margen si se fideliza clientes insatisfechos",
+    "experiencia_cliente": "Aumenta margen si se fideliza clientes insatisfechos",
     "otros": "Requiere clasificación manual para determinar impacto",
 }
 
@@ -565,25 +565,7 @@ def run_pipeline(q):
 
     items = collect_items(q)
 
-    faq_review_ids = {"faq_0", "faq_1", "faq_2", "review_0", "review_1"}
-    groq_items = [i for i in items if i.get("id") not in faq_review_ids]
-    known_items = [i for i in items if i.get("id") in faq_review_ids]
-
-    questions = []
-    for i in known_items:
-        questions.append({
-            "item_id": i["id"],
-            "question": i["title"],
-            "category": "experiencia",
-            "confidence": 0.8,
-            "model_used": "precargado",
-            "title": i["title"],
-            "url": i.get("url"),
-            "source_type": i.get("source_type", "unknown"),
-            "source_name": i.get("source_name", ""),
-        })
-
-    questions += QuestionAnalyzer(max_items=20).analyze_items(groq_items)
+    questions = QuestionAnalyzer(max_items=20).analyze_items(items)
 
     kw = TrendAnalyzer().analyze_items(items)["top_keywords"]
 
