@@ -60,10 +60,14 @@ class Database:
                     category TEXT,
                     confidence REAL,
                     model_used TEXT,
+                    topic TEXT DEFAULT '',
                     analyzed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (item_id) REFERENCES items (id) ON DELETE CASCADE
                 )
             """)
+
+            if not self.column_exists(conn, "questions", "topic"):
+                cursor.execute("ALTER TABLE questions ADD COLUMN topic TEXT DEFAULT ''")
 
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS trend_terms (
@@ -153,13 +157,13 @@ class Database:
             """, (item_id,))
             conn.commit()
 
-    def save_question(self, item_id, question, category, confidence=None, model_used=None):
+    def save_question(self, item_id, question, category, confidence=None, model_used=None, topic=""):
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO questions (item_id, question, category, confidence, model_used)
-                VALUES (?, ?, ?, ?, ?)
-            """, (item_id, question, category, confidence, model_used))
+                INSERT INTO questions (item_id, question, category, confidence, model_used, topic)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (item_id, question, category, confidence, model_used, topic))
             conn.commit()
 
     def save_trend_term(self, keyword, related_top=None, related_rising=None, autocomplete=None, interest_over_time=None, geo="PY"):
