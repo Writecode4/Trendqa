@@ -10,7 +10,8 @@ from trendqa.ingest.rss import RSSIngestor
 from trendqa.ingest.trends import GoogleTrendsIngestor
 from trendqa.ingest.faq import FAQIngestor
 from trendqa.ingest.reviews import ReviewsIngestor
-from trendqa.processing.analyzer import QuestionAnalyzer, TrendAnalyzer
+from trendqa.ingest.x import XIngestor
+from trendqa.processing.analyzer import QuestionAnalyzer, TrendAnalyzer, BrandExtractor
 #from trendqa.services.pdf_export import PDFExporter
 
 dashboard_bp = Blueprint("dashboard", __name__)
@@ -18,12 +19,14 @@ dashboard_bp = Blueprint("dashboard", __name__)
 
 def collect_items(q):
     items = []
-    items.extend(RedditIngestor().fetch())
-    items.extend(RSSIngestor().fetch())
-    items.extend(FAQIngestor().fetch())
-    items.extend(ReviewsIngestor().fetch())
+    q_paraguay = f"{q} paraguay" if "paraguay" not in q.lower() else q
+    items.extend(RedditIngestor(query=q_paraguay).fetch())
+    items.extend(RSSIngestor(query=q_paraguay).fetch())
+    items.extend(FAQIngestor(query=q_paraguay).fetch())
+    items.extend(ReviewsIngestor(query=q_paraguay).fetch())
+    items.extend(XIngestor(query=q_paraguay).fetch())
 
-    trends = GoogleTrendsIngestor().get_trend_bundle(q)
+    trends = GoogleTrendsIngestor().get_trend_bundle(q_paraguay)
     now = datetime.now().isoformat()
     items.append({
         "id": f"trends_{q}",
@@ -46,7 +49,7 @@ def collect_items(q):
     return items
 
 
-def save_to_db(db, items, questions):
+def save_to_db(db, items, questions, topic=""):
     for item in items:
         sid = db.ensure_source(
             item.get("source_name", "unknown"),
@@ -62,15 +65,16 @@ def save_to_db(db, items, questions):
             category=q["category"],
             confidence=q["confidence"],
             model_used=q["model_used"],
+            topic=topic,
         )
 
 
-def _calc_category_trend(db, current_cats, total_current):
+def _calc_category_trend(db, current_cats, total_current, topic=""):
     """Compara distribución actual de categorías vs histórico en DB."""
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT category, COUNT(*) FROM questions GROUP BY category")
+        cursor.execute("SELECT category, COUNT(*) FROM questions WHERE topic = ? GROUP BY category", (topic,))
         all_time = dict(cursor.fetchall())
         conn.close()
     except Exception:
@@ -138,6 +142,7 @@ SOURCE_RELIABILITY = {
     "trends": "Media",
     "faq": "Referencial",
     "review": "Referencial",
+    "x": "Alta",
 }
 
 SOURCE_LABELS = {
@@ -146,6 +151,7 @@ SOURCE_LABELS = {
     "trends": "Google Trends",
     "faq": "FAQ Interna",
     "review": "Reviews Internas",
+    "x": "X (Twitter)",
 }
 
 
@@ -444,7 +450,7 @@ def build_summary(q, items, questions, db, top_keywords):
     pct = int(cat_counter[top_cat] / total * 100) if total else 0
 
     # Tendencia temporal
-    trend_text = _calc_category_trend(db, cat_counter, total)
+    trend_text = _calc_category_trend(db, cat_counter, total, topic=q)
     if trend_text is None:
         trend_text = (
             "Primera corrida de análisis. Estos datos establecen la línea base "
@@ -581,8 +587,11 @@ def run_pipeline(q):
 
     kw = TrendAnalyzer().analyze_items(items)["top_keywords"]
 
-    save_to_db(db, items, questions)
+    save_to_db(db, items, questions, topic=q)
     summary = build_summary(q, items, questions, db, kw)
+
+    brands = BrandExtractor().extract(items)
+    summary["top_brands"] = brands
 
     return summary
 
@@ -594,7 +603,10 @@ def index():
 
 @dashboard_bp.route("/dashboard")
 def dashboard():
-    q = request.args.get("q", "courier paraguay")
+    q = request.args.get("q", "courier")
+    pais = request.args.get("pais", "paraguay")
+    if pais != "paraguay":
+        return render_template("dashboard.html", summary={"proximamente": True, "pais": pais})
     summary = run_pipeline(q)
     return render_template("dashboard.html", summary=summary)
 
