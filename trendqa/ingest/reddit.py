@@ -3,13 +3,13 @@ from datetime import datetime, timedelta
 
 
 class RedditIngestor:
-    def __init__(self, subreddit="Paraguay", days=90):
+    def __init__(self, query=None, subreddit="Paraguay", days=90):
         self.subreddit = subreddit
         self.limit_date = datetime.now() - timedelta(days=days)
         self.headers = {
             "User-Agent": "trendqa/1.0 by JuanCarlos"
         }
-        self.keywords = [
+        self.keywords = [query] if query else [
             "courier paraguay", "comprar de amazon", "bancard", "via miami",
             "marketplace facebook paraguay", "tienda instagram py", "estafa compras"
         ]
