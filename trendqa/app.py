@@ -4,8 +4,8 @@ from flask import Flask
 from trendqa.dashboard import dashboard_bp
 
 def create_app():
-    load_dotenv()
     base = Path(__file__).resolve().parent.parent
+    load_dotenv(base / ".env")
     app = Flask(__name__,
                 template_folder=str(base / "templates"),
                 static_folder=str(base / "static"),
