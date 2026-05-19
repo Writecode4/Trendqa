@@ -47,7 +47,7 @@ class TrendAnalyzer:
 class QuestionAnalyzer:
     CATEGORIES = (
         "envios", "pagos", "precios", "productos",
-        "garantia_devolucion", "proveedores", "experiencia", "otros"
+        "garantia_devolucion", "proveedores", "experiencia_cliente", "otros"
     )
 
     def __init__(self, max_items=5):
@@ -63,6 +63,17 @@ class QuestionAnalyzer:
         return float(match.group(1)) if match else 10
 
     def analyze_post(self, title, content, retries=3):
+        CAT_DESC = {
+            "envios": "costos, tiempos, cobertura, seguimiento de envíos",
+            "pagos": "métodos de pago, Bancard, transferencias, facturación",
+            "precios": "comparación de precios, ofertas, descuentos, valor",
+            "productos": "disponibilidad, catálogo, calidad, especificaciones",
+            "garantia_devolucion": "garantía, devoluciones, cambios, reembolsos",
+            "proveedores": "búsqueda de proveedores, importación, distribución",
+            "experiencia_cliente": "experiencia de compra, atención al cliente, usabilidad, reseñas, quejas como comprador o vendedor — NO experiencia laboral",
+            "otros": "temas que no encajan en ninguna categoría anterior",
+        }
+        cat_list = "\n".join(f'  - "{k}": {v}' for k, v in CAT_DESC.items())
         prompt = f"""Analizá el siguiente post sobre e-commerce en Paraguay y extraé las preguntas que el usuario está haciendo.
 
 Título: {title[:300]}
@@ -70,7 +81,8 @@ Contenido: {content[:1000]}
 
 Respondé SOLO con un JSON array. Cada elemento debe tener:
 - "pregunta": la pregunta textual
-- "categoria": una de {', '.join(self.CATEGORIES)}
+- "categoria": una de las siguientes (elegí la que mejor describa el tema de la pregunta):
+{cat_list}
 - "confianza": número entre 0 y 1
 
 Ejemplo:
