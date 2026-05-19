@@ -2,7 +2,8 @@ from datetime import datetime
 
 
 class FAQIngestor:
-    def __init__(self):
+    def __init__(self, query=None):
+        self.query_words = [w for w in (query.lower().split() if query else []) if len(w) > 2 and w != "paraguay"]
         self.items = [
             {
                 "question": "¿Cuál es el mejor courier para Paraguay?",
@@ -28,6 +29,8 @@ class FAQIngestor:
         now = datetime.now()
         out = []
         for i, item in enumerate(self.items):
+            if self.query_words and not any(w in item["question"].lower() or w in item["answer"].lower() for w in self.query_words):
+                continue
             out.append({
                 "id": f"faq_{i}",
                 "title": item["question"],
