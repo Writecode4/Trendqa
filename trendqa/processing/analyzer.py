@@ -123,3 +123,52 @@ Si no hay preguntas claras, devolvé [].
                 })
             time.sleep(1)
         return results
+
+
+class BrandExtractor:
+    def __init__(self):
+        api_key = os.getenv("GROQ_API_KEY")
+        self.client = Groq(api_key=api_key) if api_key else None
+        self.model = "llama-3.3-70b-versatile"
+
+    def extract(self, items, top_n=2, retries=2):
+        if not self.client or not items:
+            return []
+        texts = []
+        for item in items[:30]:
+            t = item.get("title", "")
+            c = item.get("content", "")
+            texts.append(f"{t}: {c[:200]}")
+        corpus = "\n\n---\n\n".join(texts)
+        prompt = f"""Analizá estos textos sobre e-commerce en Paraguay y extraé las {top_n} marcas, empresas o nombres comerciales MÁS MENCIONADOS.
+
+Textos:
+{corpus[:3000]}
+
+Respondé SOLO con un JSON array de objetos, cada uno con:
+- "nombre": nombre de la marca o empresa
+- "menciones": número aproximado de veces que aparece (estimado)
+
+Ejemplo:
+[{{"nombre": "Courier A", "menciones": 5}}, {{"nombre": "Courier B", "menciones": 3}}]
+
+Si no hay marcas claras, devolvé [].
+"""
+        for attempt in range(retries):
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.1,
+                )
+                raw = response.choices[0].message.content.strip()
+                raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```")
+                data = json.loads(raw)
+                if isinstance(data, list):
+                    return data[:top_n]
+                return []
+            except Exception:
+                if attempt == retries - 1:
+                    return []
+                time.sleep(3)
+        return []
