@@ -62,13 +62,26 @@
     </div>
   </nav>
   <div class="container" style="padding-top:24px;">
+    {% if summary.proximamente %}
+    <header class="hero">
+      <div>
+        <h1>TrendQA</h1>
+        <p>{{ summary.pais | capitalize }}</p>
+      </div>
+    </header>
+    <div style="text-align:center;padding:80px 20px;background:#1e293b;border:1px solid #334155;border-radius:8px;">
+      <span style="font-size:3rem;display:block;margin-bottom:16px;">🌎</span>
+      <h2 style="color:#e2e8f0;margin:0 0 8px;">Próximamente</h2>
+      <p style="color:#94a3b8;font-size:1rem;">El análisis para <strong>{{ summary.pais | capitalize }}</strong> estará disponible pronto. Por ahora solo operamos con datos de Paraguay.</p>
+      <a href="/" class="btn-cta" style="display:inline-block;margin-top:20px;">Volver al inicio</a>
+    </div>
+    {% else %}
     <header class="hero">
       <div>
         <h1>TrendQA</h1>
         <p>{{ summary.topic }}</p>
       </div>
       <div class="actions">
-        <a class="btn" href="/dashboard">Dashboard</a>
         <button class="btn" onclick="imprimirPDF()">Descargar PDF</button>
       </div>
     </header>
@@ -79,6 +92,13 @@
       <span>{{ summary.total_questions }} preguntas</span>
       <span>Fuente top: {{ summary.top_source }}</span>
       <span>Categoría top: {{ summary.top_category }}</span>
+      {% if summary.top_brands %}
+      <span>Marcas más mencionadas:
+        {% for b in summary.top_brands %}
+        <strong>{{ b.nombre }}</strong>{% if not loop.last %} · {% endif %}
+        {% endfor %}
+      </span>
+      {% endif %}
     </section>
 
     <!-- Resumen ejecutivo (3 frases) -->
@@ -263,24 +283,15 @@
     <!-- Legend for charts -->
     <div class="legend" id="legendContainer"></div>
   </div>
-
   <script>
-  {% if summary.categories %}
   const catData = {
     labels: {{ summary.categories.keys()|list|tojson }},
     values: {{ summary.categories.values()|list|tojson }},
   };
-  {% else %}
-  const catData = { labels: [], values: [] };
-  {% endif %}
-  {% if summary.sources %}
   const srcData = {
     labels: {{ summary.sources.keys()|list|tojson }},
     values: {{ summary.sources.values()|list|tojson }},
   };
-  {% else %}
-  const srcData = { labels: [], values: [] };
-  {% endif %}
 
   const colors = ['#38bdf8','#34d399','#fbbf24','#a78bfa','#fb7185','#f97316','#4ade80','#818cf8'];
 
@@ -354,5 +365,7 @@ function imprimirPDF() {
     }, 1000);
   }, 500);
 }
-</script></body>
+</script>
+{% endif %}
+</body>
 </html>
