@@ -5,8 +5,9 @@ from datetime import datetime, timedelta
 
 
 class RSSIngestor:
-    def __init__(self, days=90):
+    def __init__(self, query=None, days=90):
         self.limit_date = datetime.now() - timedelta(days=days)
+        self.query_words = [w for w in (query.lower().split() if query else []) if len(w) > 2 and w != "paraguay"]
         self.feeds = {
             "ABC Economía": "https://www.abc.com.py/arc/outboundfeeds/rss/category/economía/?outputType=xml",
             "Última Hora Economía": "https://www.ultimahora.com/rss/economia.xml",
@@ -35,6 +36,9 @@ class RSSIngestor:
 
                     title = (entry.get("title") or "").strip()
                     summary = (entry.get("summary") or entry.get("description") or "").strip()
+
+                    if self.query_words and not any(w in title.lower() or w in summary.lower() for w in self.query_words):
+                        continue
 
                     items.append({
                         "id": f"rss_{hashlib.md5(link.encode()).hexdigest()}",
