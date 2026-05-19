@@ -2,7 +2,8 @@ from datetime import datetime
 
 
 class ReviewsIngestor:
-    def __init__(self):
+    def __init__(self, query=None):
+        self.query_words = [w for w in (query.lower().split() if query else []) if len(w) > 2 and w != "paraguay"]
         self.items = [
             {
                 "title": "Opinión sobre courier A",
@@ -22,6 +23,8 @@ class ReviewsIngestor:
         now = datetime.now()
         out = []
         for i, item in enumerate(self.items):
+            if self.query_words and not any(w in item["title"].lower() or w in item["content"].lower() for w in self.query_words):
+                continue
             out.append({
                 "id": f"review_{i}",
                 "title": item["title"],
