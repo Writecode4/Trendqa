@@ -129,16 +129,43 @@ class Database:
     def save_item(self, item):
         with self.get_connection() as conn:
             cursor = conn.cursor()
+            item_id = item.get("id")
+            url = item.get("url") or None
+            source_id = item.get("source_id")
+            title = item.get("title")
+            content = item.get("content")
+
+            if url:
+                cursor.execute("SELECT id FROM items WHERE url = ?", (url,))
+                existing = cursor.fetchone()
+                if existing:
+                    cursor.execute("""
+                        UPDATE items SET source_id=?, title=?, content=?, scraped_at=CURRENT_TIMESTAMP
+                        WHERE id=?
+                    """, (source_id, title, content, existing[0]))
+                    conn.commit()
+                    return existing[0]
+
+            if item_id:
+                cursor.execute("SELECT id FROM items WHERE id = ?", (item_id,))
+                if cursor.fetchone():
+                    cursor.execute("""
+                        UPDATE items SET source_id=?, title=?, content=?, url=?, scraped_at=CURRENT_TIMESTAMP
+                        WHERE id=?
+                    """, (source_id, title, content, url, item_id))
+                    conn.commit()
+                    return item_id
+
             cursor.execute("""
-                INSERT OR IGNORE INTO items
+                INSERT INTO items
                 (id, source_id, title, content, url, author, created_utc, created_at, raw_json, item_type)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                item.get("id"),
-                item.get("source_id"),
-                item.get("title"),
-                item.get("content"),
-                item.get("url"),
+                item_id,
+                source_id,
+                title,
+                content,
+                url,
                 item.get("author"),
                 item.get("created_utc"),
                 item.get("created_at"),
@@ -146,6 +173,7 @@ class Database:
                 item.get("item_type", "post")
             ))
             conn.commit()
+            return item_id
 
     def mark_item_processed(self, item_id):
         with self.get_connection() as conn:
@@ -160,6 +188,12 @@ class Database:
     def save_question(self, item_id, question, category, confidence=None, model_used=None, topic=""):
         with self.get_connection() as conn:
             cursor = conn.cursor()
+            cursor.execute("SELECT id FROM items WHERE id = ?", (item_id,))
+            if not cursor.fetchone():
+                cursor.execute("""
+                    INSERT OR IGNORE INTO items (id, title, content, item_type)
+                    VALUES (?, ?, ?, 'placeholder')
+                """, (item_id, question[:200], question))
             cursor.execute("""
                 INSERT INTO questions (item_id, question, category, confidence, model_used, topic)
                 VALUES (?, ?, ?, ?, ?, ?)
@@ -243,6 +277,34 @@ class Database:
                     LIMIT 1
                 """)
             return cursor.fetchone()
+
+    def get_question_trends(self, topic="", recent_days=30):
+        """Compara frecuencia de preguntas recientes vs históricas."""
+        from datetime import datetime, timedelta
+        cutoff = (datetime.now() - timedelta(days=recent_days)).isoformat()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            # Preguntas recientes
+            cursor.execute("""
+                SELECT question, COUNT(*) as freq
+                FROM questions
+                WHERE topic = ? AND analyzed_at >= ?
+                GROUP BY question
+                ORDER BY freq DESC
+                LIMIT 20
+            """, (topic, cutoff))
+            recent = dict(cursor.fetchall())
+            # Preguntas anteriores al período reciente
+            cursor.execute("""
+                SELECT question, COUNT(*) as freq
+                FROM questions
+                WHERE topic = ? AND analyzed_at < ?
+                GROUP BY question
+                ORDER BY freq DESC
+                LIMIT 20
+            """, (topic, cutoff))
+            older = dict(cursor.fetchall())
+        return recent, older
 
     def get_trend_terms(self, limit=50):
         with self.get_connection() as conn:
