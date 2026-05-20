@@ -7,7 +7,11 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="https://sikuri.lat/css/style.css">
   <link rel="stylesheet" href="https://sikuri.lat/css/landing.css">
-  
+  <style>
+    .hero-section {
+      background: linear-gradient(135deg, rgba(15,23,42,0.85), rgba(30,41,59,0.05)), url('{{ url_for("static", filename="images/hero_trendqa.jpg") }}') center center / cover no-repeat;
+    }
+  </style>
 </head>
 <body>
 
@@ -31,15 +35,15 @@
         <h1 style="font-weight: bold">TrendQA<br><span style="font-size:1.5rem;color:#CBD2D0;letter-spacing:0;">Analizador de <span style="border-bottom:3px solid #0496FF;">tendencias</span> e-commerce</span></h1>
         <p>Monitoreo automatizado de Reddit, Google Trends, medios y reviews para detectar señales de demanda, riesgo de fuga y oportunidades de mercado en Paraguay.</p>
         <form action="/dashboard" method="GET" style="display:flex;gap:0.75rem;margin-top:2rem;flex-wrap:wrap;">
-          <select name="q"
-            style="flex:1;min-width:180px;padding:12px 16px;border:1px solid #334155;border-radius:0px;background:#0f172a;color:#e2e8f0;font-size:0.95rem;cursor:pointer;">
-            <option value="courier">Courier / Envíos</option>
-            <option value="pagos">Pagos / Bancard</option>
-            <option value="precios">Precios / Ofertas</option>
-            <option value="productos">Productos / Catálogo</option>
-            <option value="garantia">Garantía / Devoluciones</option>
-            <option value="proveedores">Proveedores</option>
-            <option value="experiencia">Experiencia / Quejas</option>
+            <select name="q"
+            style="flex:1;min-width:220px;padding:12px 16px;border:1px solid #334155;border-radius:0px;background:#0f172a;color:#e2e8f0;font-size:0.95rem;cursor:pointer;">
+            <option value="logistica_envios">Logística y envíos</option>
+            <option value="pagos_financiacion">Pagos y financiación</option>
+            <option value="experiencia_compra">Experiencia de compra</option>
+            <option value="confianza_seguridad">Confianza y seguridad</option>
+            <option value="plataformas_canales">Plataformas y canales</option>
+            <option value="marketing_descubrimiento">Marketing y descubrimiento</option>
+            <option value="marcas_proveedores">Marcas y proveedores</option>
           </select>
           <select name="pais"
             style="flex:0 0 160px;padding:12px 16px;border:1px solid #334155;border-radius:0px;background:#0f172a;color:#e2e8f0;font-size:0.95rem;cursor:pointer;">
@@ -51,7 +55,7 @@
             <option value="latam" disabled>LATAM (próximamente)</option>
             <option value="global" disabled>Global (próximamente)</option>
           </select>
-          <button type="submit" class="btn-cta" style="white-space:nowrap;">Generar Dashboard</button>
+          <button type="submit" class="btn" style="white-space:nowrap;">Generar Dashboard</button>
         </form>
       </div>
     </div>
