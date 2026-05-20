@@ -35,8 +35,8 @@
   </style>
   <style>
     @media print {
-      nav, .actions, button { display: none !important; }
-      body { background: white !important; color: black !important; padding: 0 !important; }
+      nav, .actions, button, .footer, .summary-meta { display: none !important; }
+      body { background: white !important; color: black !important; padding-top: 80px !important; padding-bottom: 60px !important; }
       .container { max-width: 100% !important; }
       .finding-card, .q-card, .chart-box {
         background: white !important;
@@ -45,6 +45,10 @@
         break-inside: avoid;
       }
       * { color: black !important; }
+      .print-header { display: flex !important; align-items: center; gap: 10px; position: fixed; top: 0; left: 0; right: 0; background: white; padding: 8px 20px; border-bottom: 2px solid #0496FF; z-index: 9999; }
+      .print-header img { height: 28px; }
+      .print-header span { font-weight: bold; font-size: 1rem; color: #0f172a; }
+      .print-footer { display: block !important; position: fixed; bottom: 0; left: 0; right: 0; background: white; padding: 6px 20px; border-top: 1px solid #ccc; font-size: 0.75rem; color: #64748b; text-align: center; z-index: 9999; }
     }
   </style>
 </head>
@@ -61,6 +65,17 @@
       </div>
     </div>
   </nav>
+
+  <!-- Print header/footer (solo visible en PDF) -->
+  <div class="print-header" style="display:none;">
+    <img src="{{ url_for('static', filename='images/logo-sikuri.png') }}" alt="SIKURI" onerror="this.style.display='none'" style="height:28px;">
+    <span>SIKURI</span>
+    <span style="margin-left:auto;font-size:0.8rem;color:#64748b;font-weight:normal;">TrendQA — {{ summary.topic }}</span>
+  </div>
+  <div class="print-footer" style="display:none;">
+    info@sikuri.lat &nbsp;·&nbsp; +595 974 263858 &nbsp;·&nbsp; sikuri.lat
+  </div>
+
   <div class="container" style="padding-top:24px;">
     {% if summary.proximamente %}
     <header class="hero">
@@ -95,7 +110,7 @@
       {% if summary.top_brands %}
       <span>Marcas más mencionadas:
         {% for b in summary.top_brands %}
-        <strong>{{ b.nombre }}</strong>{% if not loop.last %} · {% endif %}
+        <strong>{{ b }}</strong>{% if not loop.last %} · {% endif %}
         {% endfor %}
       </span>
       {% endif %}
@@ -120,6 +135,22 @@
       </div>
     </section>
 
+    <!-- Preguntas en tendencia -->
+    {% if summary.rising_questions %}
+    <section class="group-section">
+      <h2>Preguntas en tendencia <span style="font-size:0.8rem;color:#94a3b8;font-weight:normal;">(creciendo en frecuencia)</span></h2>
+      <p style="color:#64748b;font-size:0.78rem;margin:-8px 0 12px;"><span class="legend-dot" style="background:#34d399;"></span> <strong>Crecimiento %</strong> — aumento en frecuencia vs el histórico de 30 días atrás. Positivo = está ganando tracción.</p>
+      {% for rq in summary.rising_questions %}
+      <div class="q-card" style="border-left:4px solid #34d399;">
+        <p class="q-text">{{ rq.question[:120] }}{% if rq.question|length > 120 %}...{% endif %}</p>
+        <div class="q-meta">
+          <span style="color:#34d399;">{{ rq.crecimiento }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </section>
+    {% endif %}
+
     <!-- Charts -->
     <section class="chart-grid">
       <div class="chart-box">
@@ -131,6 +162,9 @@
         <canvas id="chartSources"></canvas>
       </div>
     </section>
+
+    <!-- Legend for charts -->
+    <div class="legend" id="legendContainer"></div>
 
     <!-- Cross-source detail -->
     {% if summary.cross_items %}
@@ -151,7 +185,8 @@
 
     <!-- Questions grouped by category -->
     <section class="group-section">
-      <h2>Preguntas destacadas por categoría</h2>
+      <h2 style="margin-top: 25px;">Preguntas destacadas por categoría</h2>
+      <p style="color:#64748b;font-size:0.78rem;margin:-8px 0 12px;"><span class="legend-dot" style="background:#38bdf8;"></span> <strong>Confianza %</strong> — qué tan seguro es el modelo de que la pregunta corresponde a la categoría. Más alto = más preciso.</p>
       {% for cat, items in summary.grouped_questions.items() %}
       <div class="cat-header">
         <h3>{{ cat }}</h3>
@@ -165,10 +200,19 @@
             {% if item.churn and item.churn.nivel == 'alto' %}
             <span style="background:#450a0a;color:#fca5a5;">fuga alto</span>
             {% endif %}
+            {% if item.respuestas and item.respuestas.hay_respuestas %}
+            <span style="background:#0c4a6e;color:#7dd3fc;font-size:0.7rem;">{{ item.respuestas.cantidad_comentarios }} resp</span>
+            <span style="background:#1e3a5f;color:#7dd3fc;font-size:0.7rem;">{{ item.respuestas.sentimiento }}</span>
+            {% endif %}
             <span>{{ item.source_type }}</span>
             <span class="conf">{{ "%.0f"|format(item.confidence * 100) }}%</span>
           </div>
         </div>
+        {% if item.respuestas and item.respuestas.hay_respuestas and item.respuestas.resumen %}
+        <div style="margin-top:4px;font-size:0.78rem;color:#94a3b8;border-left:2px solid #334155;padding-left:8px;">
+          {{ item.respuestas.resumen }}
+        </div>
+        {% endif %}
         {% if item.action %}
         <div style="margin-top:6px;border-top:1px solid #334155;padding-top:6px;display:flex;gap:8px;align-items:center;">
           <span style="font-size:0.7rem;padding:1px 8px;border-radius:8px;background:#1e3a5f;color:#7dd3fc;">{{ item.action.badge }}</span>
@@ -186,6 +230,7 @@
     {% if summary.churn_questions %}
     <section class="group-section">
       <h2>Riesgo de fuga</h2>
+      <p style="color:#64748b;font-size:0.78rem;margin:-8px 0 12px;"><span class="legend-dot" style="background:#fca5a5;"></span> <strong>Riesgo (1-5)</strong> — 4+ = alto riesgo de pérdida de clientes. Basado en categoría, fuente, keywords y recurrencia entre fuentes.</p>
       <p style="color:#64748b;font-size:0.85rem;margin-bottom:12px;">
         Señales que pueden indicar pérdida de clientes. Priorizar atención.
       </p>
@@ -213,15 +258,15 @@
     {% if summary.oportunidades %}
     <section class="group-section">
       <h2>Oportunidades priorizadas</h2>
+      <p style="color:#64748b;font-size:0.78rem;margin:-8px 0 12px;"><span class="legend-dot" style="background:#ef4444;"></span> <strong>Score</strong> — prioridad de la oportunidad. <span style="background:#450a0a;color:#fca5a5;padding:1px 6px;">3 Crítica</span> &gt; <span style="background:#422006;color:#fde047;padding:1px 6px;">2 Alta</span> &gt; <span style="background:#0c4a6e;color:#7dd3fc;padding:1px 6px;">1 Media</span> &gt; <span style="background:#1f2937;color:#9ca3af;padding:1px 6px;">0 Baja</span></p>
       <p style="color:#64748b;font-size:0.85rem;margin-bottom:12px;">
         Ranking por relación entre urgencia, demanda y capacidad de captura.
       </p>
       {% for o in summary.oportunidades %}
-      <div class="q-card" style="flex-direction:column;align-items:stretch;
-        {% if o.nivel >= 3 %}border-left:4px solid #ef4444;
-        {% elif o.nivel == 2 %}border-left:4px solid #fbbf24;
-        {% elif o.nivel == 1 %}border-left:4px solid #38bdf8;
-        {% else %}border-left:4px solid #64748b;{% endif %}">
+      {% set border_color = "#ef4444" if o.nivel >= 3 else "#fbbf24" if o.nivel == 2 else "#38bdf8" if o.nivel == 1 else "#64748b" %}
+      {% set score_bg = "#450a0a" if o.nivel >= 3 else "#422006" if o.nivel == 2 else "#0c4a6e" if o.nivel == 1 else "#1f2937" %}
+      {% set score_color = "#fca5a5" if o.nivel >= 3 else "#fde047" if o.nivel == 2 else "#7dd3fc" if o.nivel == 1 else "#9ca3af" %}
+      <div class="q-card" style="flex-direction:column;align-items:stretch;border-left:4px solid {{ border_color }};">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <div>
             <strong style="color:#e2e8f0;text-transform:capitalize;">{{ o.categoria }}</strong>
@@ -229,11 +274,7 @@
               {{ o.señales }} señales ({{ o.porcentaje }}) · tendencia {{ o.tendencia_etq }}
             </span>
           </div>
-          <span style="font-size:0.75rem;padding:2px 10px;border-radius:10px;
-            {% if o.nivel >= 3 %}background:#450a0a;color:#fca5a5;
-            {% elif o.nivel == 2 %}background:#422006;color:#fde047;
-            {% elif o.nivel == 1 %}background:#0c4a6e;color:#7dd3fc;
-            {% else %}background:#1f2937;color:#9ca3af;{% endif %}">
+          <span style="font-size:0.75rem;padding:2px 10px;border-radius:10px;background:{{ score_bg }};color:{{ score_color }};">
             Score {{ o.score }}
           </span>
         </div>
@@ -280,9 +321,40 @@
     </section>
     {% endif %}
 
-    <!-- Legend for charts -->
-    <div class="legend" id="legendContainer"></div>
   </div>
+
+  <footer class="footer">
+    <div class="footer-container">
+      <div>
+        <span class="footer-brand">SIKURI</span>
+        <p style="margin-top:0.5rem;">Datos &rarr; Decisiones</p>
+      </div>
+      <div>
+        <h4>Producto</h4>
+        <ul>
+          <li>Dashboard</li>
+          <li>Informe PDF</li>
+          <li>API de señales</li>
+        </ul>
+      </div>
+      <div>
+        <h4>Legal</h4>
+        <ul>
+          <li>Privacidad</li>
+          <li>Términos</li>
+        </ul>
+      </div>
+      <div>
+        <h4>Contacto</h4>
+        <p>info@sikuri.lat</p>
+        <p style="margin-top:0.5rem;">+595 974 263858</p>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      &copy; 2026 SIKURI. Todos los derechos reservados.
+    </div>
+  </footer>
+
   <script>
   const catData = {
     labels: {{ summary.categories.keys()|list|tojson }},
