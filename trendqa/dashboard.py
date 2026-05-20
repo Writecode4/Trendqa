@@ -1,32 +1,58 @@
+import os
 from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
+from dotenv import load_dotenv
 from flask import Blueprint, render_template, request, send_file
 from trendqa.db import Database
 
 BASE = Path(__file__).resolve().parent.parent
+load_dotenv(BASE / ".env")
 from trendqa.ingest.reddit import RedditIngestor
 from trendqa.ingest.rss import RSSIngestor
 from trendqa.ingest.trends import GoogleTrendsIngestor
 from trendqa.ingest.faq import FAQIngestor
 from trendqa.ingest.reviews import ReviewsIngestor
 from trendqa.ingest.x import XIngestor
-from trendqa.processing.analyzer import QuestionAnalyzer, TrendAnalyzer, BrandExtractor
+from trendqa.ingest.mercadolibre import MercadoLibreIngestor
+from trendqa.ingest.google_news import GoogleNewsIngestor
+from trendqa.processing.analyzer import QuestionAnalyzer, TrendAnalyzer, BrandExtractor, AnswerAnalyzer
 #from trendqa.services.pdf_export import PDFExporter
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
+SEARCH_TERMS = {
+    "experiencia_compra": ["compra", "pedido", "devolución", "garantía", "rastreo", "reclamo", "cancelar", "cambio", "soporte", "seguimiento"],
+    "pagos_financiacion": ["pago", "tarjeta", "cuota", "financiación", "bancard", "billetera", "wallet", "paypal", "transferencia", "débito", "crédito", "cripto"],
+    "confianza_seguridad": ["estafa", "confiable", "seguro", "reseña falsa", "engaño", "fraude", "verificar", "opiniones", "reputación"],
+    "plataformas_canales": ["marketplace", "tienda online", "instagram", "facebook", "shopify", "mercadolibre", "vender", "ecommerce"],
+    "logistica_envios": ["envío", "courier", "delivery", "paquete", "entrega", "aduana", "importación", "tracking", "logística"],
+    "marketing_descubrimiento": ["oferta", "descuento", "promo", "precio barato", "comparación", "cupón", "liquidación", "rebaja", "económico"],
+    "marcas_proveedores": ["marca", "proveedor", "empresa", "fabricante", "distribuidor", "tienda", "producto original", "mayorista"],
+}
+
+
+def expand_terms(q):
+    base = SEARCH_TERMS.get(q, [q])
+    expanded = [base[0], f"{base[0]} paraguay"]
+    return list(set(expanded))
+
 
 def collect_items(q):
     items = []
-    q_paraguay = f"{q} paraguay" if "paraguay" not in q.lower() else q
-    items.extend(RedditIngestor(query=q_paraguay).fetch())
-    items.extend(RSSIngestor(query=q_paraguay).fetch())
-    items.extend(FAQIngestor(query=q_paraguay).fetch())
-    items.extend(ReviewsIngestor(query=q_paraguay).fetch())
-    items.extend(XIngestor(query=q_paraguay).fetch())
+    terms = expand_terms(q)
 
-    trends = GoogleTrendsIngestor().get_trend_bundle(q_paraguay)
+    for t in terms:
+        items.extend(RedditIngestor(query=t).fetch(limit=5))
+        items.extend(XIngestor(query=t).fetch(max_results=3))
+        items.extend(RSSIngestor(query=t).fetch())
+        items.extend(MercadoLibreIngestor(query=t).fetch())
+        items.extend(GoogleNewsIngestor(query=t).fetch())
+
+    items.extend(FAQIngestor(query=q).fetch())
+    items.extend(ReviewsIngestor(query=q).fetch())
+
+    trends = GoogleTrendsIngestor().get_trend_bundle(terms[0])
     now = datetime.now().isoformat()
     items.append({
         "id": f"trends_{q}",
@@ -50,17 +76,20 @@ def collect_items(q):
 
 
 def save_to_db(db, items, questions, topic=""):
+    id_map = {}
     for item in items:
         sid = db.ensure_source(
             item.get("source_name", "unknown"),
             item.get("source_type", "unknown"),
         )
         item["source_id"] = sid
-        db.save_item(item)
+        orig_id = item.get("id")
+        actual_id = db.save_item(item)
+        id_map[orig_id] = actual_id
 
     for q in questions:
         db.save_question(
-            item_id=q["item_id"],
+            item_id=id_map.get(q["item_id"], q["item_id"]),
             question=q["question"],
             category=q["category"],
             confidence=q["confidence"],
@@ -143,6 +172,8 @@ SOURCE_RELIABILITY = {
     "faq": "Referencial",
     "review": "Referencial",
     "x": "Alta",
+    "mercadolibre": "Alta",
+    "google_news": "Media",
 }
 
 SOURCE_LABELS = {
@@ -152,6 +183,8 @@ SOURCE_LABELS = {
     "faq": "FAQ Interna",
     "review": "Reviews Internas",
     "x": "X (Twitter)",
+    "mercadolibre": "MercadoLibre PY",
+    "google_news": "Google News",
 }
 
 
@@ -202,19 +235,19 @@ def _build_executive_summary(total, top_cat, pct, kw_text, src_counter, cat_coun
             "Crear contenido específico que responda la pregunta recurrente "
             "y monitorear si la frecuencia baja en los próximos 30 días."
         )
-    elif top_cat == "envios":
+    elif top_cat == "logistica_envios":
         que_haria_hoy = (
             "Revisar la propuesta de valor en envíos y la comunicación "
             "de tiempos de entrega. Una campaña enfocada en transparencia "
             "logística puede captar a quienes están comparando opciones."
         )
-    elif top_cat == "pagos":
+    elif top_cat == "pagos_financiacion":
         que_haria_hoy = (
             "Evaluar si los métodos de pago actuales cubren la demanda. "
             "Si las preguntas son sobre alternativas, hay oportunidad "
             "de agregar opciones y comunicarlo activamente."
         )
-    elif top_cat == "precios":
+    elif top_cat == "marketing_descubrimiento":
         que_haria_hoy = (
             "Analizar la estructura de precios vs competidores. "
             "Si hay comparación recurrente, el problema no es el precio "
@@ -234,47 +267,47 @@ def _build_executive_summary(total, top_cat, pct, kw_text, src_counter, cat_coun
 
 
 RECOMMENDED_ACTIONS = {
-    "envios": {
+    "experiencia_compra": {
+        "default": ("Revisar proceso post-venta y fortalecer comunicación de seguimiento.", "servicio"),
+        "reddit": ("Responder con datos concretos y crear contenido sobre proceso de compra.", "contenido"),
+        "faq": ("Actualizar FAQ con pasos detallados de compra y devolución.", "contenido"),
+        "review": ("Contactar al cliente, resolver su caso y mejorar proceso.", "servicio"),
+    },
+    "pagos_financiacion": {
+        "default": ("Evaluar ampliar métodos de pago y comunicar opciones disponibles.", "anuncios"),
+        "reddit": ("Publicar thread aclaratorio sobre opciones de pago y seguridad.", "contenido"),
+        "faq": ("Actualizar FAQ con métodos de pago y financiación.", "contenido"),
+        "review": ("Responder y evaluar si hay fricción en checkout.", "servicio"),
+    },
+    "confianza_seguridad": {
+        "default": ("Reforzar comunicación de confianza y crear contenido sobre seguridad.", "contenido"),
+        "reddit": ("Participar con datos objetivos y desmentir mitos.", "contenido"),
+        "faq": ("Crear sección de confianza con garantías y certificaciones.", "contenido"),
+        "review": ("Responder públicamente y escalar si es queja grave.", "servicio"),
+    },
+    "plataformas_canales": {
+        "default": ("Analizar presencia en canales y crear contenido comparativo.", "contenido"),
+        "reddit": ("Participar con análisis de plataformas y recomendar según caso.", "contenido"),
+        "faq": ("Crear guía de canales y plataformas disponibles.", "contenido"),
+        "review": ("Agradecer y preguntar por su experiencia en cada canal.", "servicio"),
+    },
+    "logistica_envios": {
         "default": ("Crear propuesta de entrega transparente con tiempos y seguimiento.", "contenido"),
-        "reddit": ("Responder en Reddit con datos concretos y lanzar campaña de contenido sobre tracking.", "contenido"),
-        "faq": ("Actualizar FAQ con tiempos reales y activar anuncios de entrega garantizada.", "anuncios"),
-        "review": ("Contactar al cliente, resolver su caso y lanzar oferta de primera compra.", "servicio"),
+        "reddit": ("Responder en Reddit con datos concretos sobre tiempos y cobertura.", "contenido"),
+        "faq": ("Actualizar FAQ con tiempos reales y puntos de entrega.", "contenido"),
+        "review": ("Contactar al cliente y mejorar comunicación logística.", "servicio"),
     },
-    "pagos": {
-        "default": ("Agregar métodos solicitados y activar anuncios destacando opciones de pago.", "anuncios"),
-        "reddit": ("Publicar thread aclaratorio y ajustar pricing si hay costos ocultos.", "pricing"),
-        "faq": ("Actualizar FAQ y evaluar lanzar oferta con descuento por medio de pago.", "oferta"),
-        "review": ("Responder agradeciendo y mejorar servicio si hay fricción en checkout.", "servicio"),
+    "marketing_descubrimiento": {
+        "default": ("Analizar estructura de precios y crear contenido de ofertas.", "pricing"),
+        "reddit": ("Participar con datos de valor y evaluar lanzar promoción.", "oferta"),
+        "faq": ("Actualizar precios visibles y promociones activas.", "anuncios"),
+        "review": ("Agregar testimonio y considerar ajustar pricing.", "pricing"),
     },
-    "precios": {
-        "default": ("Ajustar pricing o crear contenido comparativo vs competencia.", "pricing"),
-        "reddit": ("Participar con datos de valor agregado y evaluar lanzar oferta temporal.", "oferta"),
-        "faq": ("Actualizar precios visibles y activar anuncios de relación calidad-precio.", "anuncios"),
-        "review": ("Agregar testimonio y considerar ajustar pricing si hay quejas recurrentes.", "pricing"),
-    },
-    "garantia_devolucion": {
-        "default": ("Crear sección visible de garantía y política de devolución.", "contenido"),
-        "reddit": ("Publicar caso real de devolución exitosa y mejorar servicio post-venta.", "servicio"),
-        "faq": ("Detallar proceso paso a paso y lanzar oferta con garantía extendida.", "oferta"),
-        "review": ("Responder ofreciendo resolver el caso y crear contenido de confianza.", "contenido"),
-    },
-    "productos": {
-        "default": ("Mejorar fichas de producto y lanzar MVP de catálogo online.", "mvp"),
-        "reddit": ("Publicar listado actualizado y activar anuncios de productos destacados.", "anuncios"),
-        "faq": ("Agregar disponibilidad y crear contenido de uso/review.", "contenido"),
-        "review": ("Agradecer y ofrecer muestra o descuento en próxima compra.", "oferta"),
-    },
-    "proveedores": {
-        "default": ("Crear landing para proveedores con requisitos y contacto.", "contenido"),
-        "reddit": ("Responder con información del proceso y evaluar MVP de portal proveedores.", "mvp"),
-        "faq": ("Incluir sección en FAQ interna.", "contenido"),
-        "review": ("Derivar a compras y crear contenido sobre alianzas.", "contenido"),
-    },
-    "experiencia_cliente": {
-        "default": ("Derivar a CX y mejorar servicio si hay queja recurrente.", "servicio"),
-        "reddit": ("Empatizar, escalar internamente y activar anuncios de mejora.", "anuncios"),
-        "faq": ("Si recurre, crear contenido específico.", "contenido"),
-        "review": ("Responder públicamente y lanzar oferta de compensación.", "servicio"),
+    "marcas_proveedores": {
+        "default": ("Monitorear menciones de marca y crear contenido de tracking.", "contenido"),
+        "reddit": ("Responder con información de marcas y tendencias.", "contenido"),
+        "faq": ("Incluir directorio de marcas y proveedores.", "contenido"),
+        "review": ("Derivar a compras si aplica.", "contenido"),
     },
     "otros": {
         "default": ("Revisar y clasificar manualmente.", "contenido"),
@@ -304,12 +337,34 @@ def _recommended_action(category, source_type, confidence):
     return {"texto": texto, "tipo": tipo, "badge": badge}
 
 
-CHURN_CATEGORIAS_ALTAS = {"experiencia_cliente", "garantia_devolucion"}
+CHURN_CATEGORIAS_ALTAS = {"experiencia_compra", "confianza_seguridad"}
 CHURN_KEYWORDS = [
     "devolver", "cancelar", "queja", "mal servicio", "estafa", "robo",
     "no funciona", "pésimo", "horrible", "nunca", "mentira", "no recomiendo",
     "alternativa", "otra empresa", "cambiar", "me voy", "competencia",
 ]
+
+
+def _find_rising_questions(db, topic=""):
+    """Detecta preguntas en crecimiento comparando frecuencia reciente vs histórica."""
+    recent, older = db.get_question_trends(topic=topic, recent_days=30)
+    if not recent:
+        return []
+    older_total = sum(older.values()) or 1
+    recent_total = sum(recent.values()) or 1
+    rising = []
+    for question, recent_freq in sorted(recent.items(), key=lambda x: x[1], reverse=True)[:10]:
+        older_freq = older.get(question, 0)
+        recent_pct = recent_freq / recent_total * 100
+        older_pct = older_freq / older_total * 100
+        cambio = recent_pct - older_pct
+        if cambio > 5:
+            rising.append({
+                "question": question,
+                "frecuencia_reciente": recent_freq,
+                "crecimiento": f"+{cambio:.0f}%",
+            })
+    return rising[:5]
 
 
 def _calc_churn_risk(question, source_type, category, cross_sources_count):
@@ -345,19 +400,19 @@ OPORTUNIDAD_PONDERACION = {
 }
 
 SOLUCIONABILIDAD = {
-    "envios": 3, "pagos": 3, "precios": 2,
-    "garantia_devolucion": 2, "productos": 2,
-    "proveedores": 1, "experiencia_cliente": 1, "otros": 0,
+    "logistica_envios": 3, "pagos_financiacion": 3, "experiencia_compra": 3,
+    "confianza_seguridad": 2, "plataformas_canales": 2,
+    "marketing_descubrimiento": 2, "marcas_proveedores": 1, "otros": 0,
 }
 
 CAT_BUSINESS_IMPACT = {
-    "envios": "Aumenta conversión si se reduce incertidumbre logística",
-    "pagos": "Reduce abandono de carrito si se amplían métodos",
-    "precios": "Protege margen si se comunica valor diferencial",
-    "garantia_devolucion": "Evita pérdida de clientes por desconfianza",
-    "productos": "Genera ventas si se mejora presentación de catálogo",
-    "proveedores": "Reduce costos si se optimiza cadena de suministro",
-    "experiencia_cliente": "Aumenta margen si se fideliza clientes insatisfechos",
+    "experiencia_compra": "Aumenta retención si se reduce fricción post-venta",
+    "pagos_financiacion": "Reduce abandono de carrito si se amplían métodos de pago",
+    "confianza_seguridad": "Aumenta conversión si se fortalece confianza del consumidor",
+    "plataformas_canales": "Guía decisión de dónde vender y en qué canales invertir",
+    "logistica_envios": "Aumenta conversión si se reduce incertidumbre logística",
+    "marketing_descubrimiento": "Protege margen si se comunica valor y ofertas",
+    "marcas_proveedores": "Revela tendencias de marca y oportunidades de distribución",
     "otros": "Requiere clasificación manual para determinar impacto",
 }
 
@@ -469,6 +524,9 @@ def build_summary(q, items, questions, db, top_keywords):
             f"{', '.join(top_cross['sources'])}."
         )
 
+    # Preguntas en tendencia
+    rising_questions = _find_rising_questions(db, topic=q)
+
     # Insight
     insight_text = _generate_insight(cat_counter, total, top_cat)
 
@@ -485,7 +543,11 @@ def build_summary(q, items, questions, db, top_keywords):
         key = q_item_x["question"].strip().lower()[:80]
         cross_map[key] = len({q2["source_type"] for q2 in questions if q2["question"].strip().lower()[:80] == key})
 
-    # Agrupar preguntas por categoría con acción y riesgo de fuga
+    # Mapa de contenido por item_id para análisis de respuestas
+    item_content_map = {item.get("id"): item.get("content", "") for item in items}
+    ans_analyzer = AnswerAnalyzer()
+
+    # Agrupar preguntas por categoría con acción, riesgo de fuga y análisis de respuestas
     grouped = {}
     churn_questions = []
     for q_item in sorted(questions, key=lambda x: x["confidence"], reverse=True):
@@ -496,6 +558,9 @@ def build_summary(q, items, questions, db, top_keywords):
         q_item["churn"] = _calc_churn_risk(
             q_item["question"], q_item["source_type"], q_item["category"], cross_count
         )
+        # Análisis de respuestas
+        content = item_content_map.get(q_item["item_id"], "")
+        q_item["respuestas"] = ans_analyzer.analyze(q_item["question"], content)
         if q_item["churn"]["riesgo"] >= 3:
             churn_questions.append(q_item)
         cat = q_item["category"]
@@ -536,6 +601,7 @@ def build_summary(q, items, questions, db, top_keywords):
         "churn_questions": sorted(churn_questions, key=lambda x: x["churn"]["riesgo"], reverse=True)[:10],
         "anexo_fuentes": anexo_fuentes,
         "oportunidades": oportunidades,
+        "rising_questions": rising_questions,
         # Resumen ejecutivo
         "exec": exec_summary,
         # Claves legacy para compatibilidad con report_pdf.html
@@ -585,7 +651,7 @@ def index():
 
 @dashboard_bp.route("/dashboard")
 def dashboard():
-    q = request.args.get("q", "courier")
+    q = request.args.get("q", "logistica_envios")
     pais = request.args.get("pais", "paraguay")
     if pais != "paraguay":
         return render_template("dashboard.html", summary={"proximamente": True, "pais": pais})
