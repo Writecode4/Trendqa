@@ -24,7 +24,7 @@ class GoogleNewsIngestor:
             return items
         try:
             url = f"https://news.google.com/search?q={requests.utils.quote(self.query)}&hl=es-419&gl=PY&ceid=PY:es-419"
-            r = requests.get(url, headers=self.headers, timeout=20)
+            r = requests.get(url, headers=self.headers, timeout=8)
             if r.status_code != 200:
                 return items
             soup = BeautifulSoup(r.text, "html.parser")
