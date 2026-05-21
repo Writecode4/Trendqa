@@ -12,4 +12,4 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 EXPOSE 5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--timeout", "120", "main:app"]
+CMD ["python", "main.py"]
