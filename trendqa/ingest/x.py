@@ -44,7 +44,7 @@ class XIngestor:
 
     def _scrape_instance(self, instance, max_results):
         url = f"{instance}/search?q={requests.utils.quote(self.query)}&f=tweets"
-        r = requests.get(url, headers=self.headers, timeout=8)
+        r = requests.get(url, headers=self.headers, timeout=20)
         if r.status_code != 200:
             return []
         soup = BeautifulSoup(r.text, "html.parser")
