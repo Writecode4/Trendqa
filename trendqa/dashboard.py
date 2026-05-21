@@ -655,13 +655,7 @@ def dashboard():
     pais = request.args.get("pais", "paraguay")
     if pais != "paraguay":
         return render_template("dashboard.html", summary={"proximamente": True, "pais": pais})
-    import traceback, sys
-    try:
-        summary = run_pipeline(q)
-    except Exception:
-        tb = traceback.format_exc()
-        print(f"ERROR en dashboard: {tb}", flush=True)
-        return f"Error: {tb}", 500
+    summary = run_pipeline(q)
     return render_template("dashboard.html", summary=summary)
 
 
