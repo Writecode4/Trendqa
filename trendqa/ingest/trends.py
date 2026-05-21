@@ -25,7 +25,7 @@ class GoogleTrendsIngestor:
             r = requests.get(
                 "https://suggestqueries.google.com/complete/search",
                 params={"client": "firefox", "hl": "es", "q": keyword},
-                timeout=15,
+                timeout=8,
             )
             if r.status_code == 200:
                 data = r.json()
@@ -39,7 +39,7 @@ class GoogleTrendsIngestor:
                 "https://www.google.com/complete/search",
                 params={"q": keyword, "hl": "es", "client": "gws-wiz", "xssi": "t"},
                 headers=self.headers,
-                timeout=15,
+                timeout=8,
             )
             if r.status_code == 200:
                 raw = r.text
@@ -60,7 +60,7 @@ class GoogleTrendsIngestor:
         }
         try:
             url = f"https://trends.google.com/trends/explore?geo={self.geo}&q={requests.utils.quote(keyword)}"
-            r = requests.get(url, headers=self.headers, timeout=20)
+            r = requests.get(url, headers=self.headers, timeout=8)
             if r.status_code != 200:
                 return result
             soup = BeautifulSoup(r.text, "html.parser")
