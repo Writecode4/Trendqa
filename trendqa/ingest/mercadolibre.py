@@ -24,7 +24,7 @@ class MercadoLibreIngestor:
             return items
         try:
             url = f"https://listado.mercadolibre.com.py/{requests.utils.quote(self.search_url)}"
-            r = requests.get(url, headers=self.headers, timeout=8)
+            r = requests.get(url, headers=self.headers, timeout=20)
             if r.status_code != 200:
                 return items
             soup = BeautifulSoup(r.text, "html.parser")
