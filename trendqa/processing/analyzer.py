@@ -140,7 +140,12 @@ Si no hay preguntas claras, devolvé [].
                 )
                 raw = response.choices[0].message.content.strip()
                 raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```")
-                data = json.loads(raw)
+                raw = raw.strip()
+                try:
+                    data = json.loads(raw)
+                except json.JSONDecodeError:
+                    match = re.search(r'\[.*?\]', raw, re.DOTALL)
+                    data = json.loads(match.group()) if match else []
                 if isinstance(data, dict):
                     return data.get("preguntas", data.get("questions", []))
                 return data if isinstance(data, list) else []
@@ -255,7 +260,13 @@ Textos: {text}
                     )
                     raw = response.choices[0].message.content.strip()
                     raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```")
-                    brands = json.loads(raw)[:2]
+                    raw = raw.strip()
+                    try:
+                        parsed = json.loads(raw)
+                    except json.JSONDecodeError:
+                        match = re.search(r'\[.*?\]', raw, re.DOTALL)
+                        parsed = json.loads(match.group()) if match else []
+                    brands = parsed[:2]
                     if brands:
                         return brands
                 except RateLimitError as e:
@@ -335,7 +346,12 @@ Respondé SOLO con un JSON:
                 )
                 raw = response.choices[0].message.content.strip()
                 raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```")
-                data = json.loads(raw)
+                raw = raw.strip()
+                try:
+                    data = json.loads(raw)
+                except json.JSONDecodeError:
+                    match = re.search(r'\{.*?\}', raw, re.DOTALL)
+                    data = json.loads(match.group()) if match else {}
                 return {
                     "hay_respuestas": True,
                     "sentimiento": data.get("sentimiento", "neutral"),
