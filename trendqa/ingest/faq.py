@@ -4,7 +4,7 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 
 
-class FAQIngestor:
+class ReviewsIngestor:
     def __init__(self, query=None):
         self.query_words = [w for w in (query.lower().split() if query else []) if len(w) > 2 and w != "paraguay"]
         self.query = query or ""
@@ -13,58 +13,76 @@ class FAQIngestor:
             "Accept-Language": "es-419,es;q=0.9",
         }
         self.items = [
-            {"question": "¿Cuál es el mejor courier para Paraguay?", "answer": "Depende del costo, tiempo y soporte. Conviene comparar reseñas y tiempos de entrega."},
-            {"question": "¿Cuánto tarda un envío internacional?", "answer": "Varía según origen, courier y aduana. Puede ir de pocos días a varias semanas."},
-            {"question": "¿Qué es vía Miami?", "answer": "Es una modalidad logística para consolidar compras en EE. UU. antes de enviarlas a Paraguay."},
-            {"question": "¿Cómo rastrear un pedido?", "answer": "Usando el código de seguimiento del courier en su sitio web. Algunos también notifican por WhatsApp."},
-            {"question": "¿Hay impuestos de importación?", "answer": "Sí, la aduana paraguaya aplica aranceles según el tipo de producto y valor. Los courriers suelen gestionarlo."},
-            {"question": "¿Cuál es la franquicia para compras internacionales?", "answer": "Actualmente hasta USD 500 sin tributos para particulares, vía courier. Cantidad limitada al año."},
-            {"question": "¿Conviene comprar en Amazon o mejor en tiendas locales?", "answer": "Depende del tipo de producto, precio final con envío e impuestos, y urgencia de entrega."},
-            {"question": "¿Bancard, cuál es la mejor tarjeta para compras online?", "answer": "Depende de promociones, cuotas sin interés y beneficios. Las Visa y Mastercard internacionales son las más aceptadas."},
-            {"question": "¿Cómo evitar estafas en compras online?", "answer": "Verificar reputación del vendedor, usar medios de pago seguros, revisar políticas de devolución."},
-            {"question": "¿Facebook Marketplace Paraguay es seguro?", "answer": "Depende del vendedor. Preferir entrega personal y verificar antes de pagar. Usar transferencia solo con referencias."},
+            {"title": "Opinión sobre courier A", "content": "Buen precio, pero soporte lento en temporadas altas."},
+            {"title": "Opinión sobre courier B", "content": "Entrega rápida y seguimiento claro, aunque cuesta un poco más."},
+            {"title": "Experiencia con courier C", "content": "Perdieron mi paquete una vez. La reposición tardó 2 meses."},
+            {"title": "Recomendación de tienda online PY", "content": "Excelente atención al cliente, envío gratuito desde 200.000 Gs."},
+            {"title": "Queja sobre marketplace", "content": "Producto llegó dañado, el vendedor no respondió. Tuve que reclamar por la tarjeta."},
+            {"title": "Opinión sobre pagos online", "content": "Bancard funciona bien, pero las comisiones son altas para montos chicos."},
+            {"title": "Reseña de Amazon vía courier", "content": "Comprar por Amazon sale más barato que en tiendas locales aunque tarda 15 días."},
+            {"title": "Experiencia con compra internacional", "content": "Aduana me cobró más de lo esperado. El courier no avisó antes del despacho."},
+            {"title": "Opinión sobre tienda Instagram PY", "content": "Buena atención por WhatsApp, envío rápido dentro de Asunción."},
+            {"title": "Recomendación de celulares PY", "content": "Más barato comprar en tienda local con garantía que importar. Solo conviene si es un modelo exclusivo."},
         ]
 
-    def _scrape_external_faq(self, url):
-        """Fallback: buscar FAQs en sitios de referencia."""
+    def _scrape_review_html(self, url):
+        """Fallback: scrape reseñas de sitios de opinión."""
         out = []
         try:
             r = requests.get(url, headers=self.headers, timeout=8)
             if r.status_code != 200:
                 return out
             soup = BeautifulSoup(r.text, "html.parser")
-            faq_blocks = (
-                soup.select("div[class*='faq']")
-                or soup.select("div[class*='accordion']")
-                or soup.select("div[class*='question']")
-                or soup.select("details")
-                or soup.select("div[class*='answer']")
+            review_blocks = (
+                soup.select("div[class*='review']")
+                or soup.select("div[class*='opinion']")
+                or soup.select("div[class*='comment']")
+                or soup.select("div[class*='testimonial']")
+                or soup.select("div[class*='feedback']")
+                or soup.find_all("div", class_=re.compile(r"review|opinion|comment|testimonial|feedback"))
                 or []
             )
-            for block in faq_blocks[:10]:
-                q_el = block.select_one("h3, h4, strong, div[class*='question'], summary")
-                a_el = block.select_one("p, div[class*='answer'], div[class*='content']")
-                if q_el and a_el:
-                    q_text = q_el.get_text(strip=True)
-                    a_text = a_el.get_text(strip=True)
-                    if q_text and a_text and len(q_text) > 10 and len(a_text) > 10:
-                        if self.query_words:
-                            haystack = f"{q_text.lower()} {a_text.lower()}"
-                            if not any(w in haystack for w in self.query_words):
-                                continue
-                        out.append({
-                            "id": f"faq_scrape_{hash(q_text)}",
-                            "title": q_text[:200],
-                            "content": a_text,
-                            "url": url,
-                            "author": None,
-                            "created_utc": datetime.now().timestamp(),
-                            "created_at": datetime.now().isoformat(),
-                            "raw_json": None,
-                            "item_type": "faq_item",
-                            "source_name": "FAQ Externa (scrape)",
-                            "source_type": "faq",
-                        })
+            seen = set()
+            for block in review_blocks[:15]:
+                text = block.get_text(strip=True)
+                if not text or len(text) < 20 or text in seen:
+                    continue
+                seen.add(text)
+
+                title = ""
+                for sel in ("h3", "h4", "strong", "div[class*='title']", "span[class*='name']"):
+                    el = block.select_one(sel)
+                    if el:
+                        title = el.get_text(strip=True)[:150]
+                        if title:
+                            break
+                if not title:
+                    title = text[:120]
+
+                author = ""
+                for sel in ("span[class*='author']", "span[class*='user']", "div[class*='author']"):
+                    el = block.select_one(sel)
+                    if el:
+                        author = el.get_text(strip=True)
+                        if author:
+                            break
+
+                if self.query_words and not any(w in text.lower() for w in self.query_words):
+                    continue
+
+                out.append({
+                    "id": f"review_scrape_{hash(text)}",
+                    "title": title[:200],
+                    "content": text[:1000],
+                    "url": url,
+                    "author": author or None,
+                    "created_utc": datetime.now().timestamp(),
+                    "created_at": datetime.now().isoformat(),
+                    "raw_json": None,
+                    "item_type": "review_item",
+                    "source_name": "Reviews scrapeadas",
+                    "source_type": "review",
+                })
         except Exception:
             pass
         return out
@@ -73,33 +91,32 @@ class FAQIngestor:
         now = datetime.now()
         out = []
 
-        # Estrategia 1: FAQ hardcoded
+        # Estrategia 1: Reviews hardcodeadas
         for i, item in enumerate(self.items):
-            if self.query_words and not any(w in item["question"].lower() or w in item["answer"].lower() for w in self.query_words):
+            if self.query_words and not any(w in item["title"].lower() or w in item["content"].lower() for w in self.query_words):
                 continue
             out.append({
-                "id": f"faq_{i}",
-                "title": item["question"],
-                "content": item["answer"],
+                "id": f"review_{i}",
+                "title": item["title"],
+                "content": item["content"],
                 "url": None,
                 "author": None,
                 "created_utc": now.timestamp(),
                 "created_at": now.isoformat(),
                 "raw_json": None,
-                "item_type": "faq_item",
-                "source_name": "FAQ Interna",
-                "source_type": "faq",
+                "item_type": "review_item",
+                "source_name": "Reviews Internas",
+                "source_type": "review",
             })
 
-        # Estrategia 2: Scrape FAQs externas
+        # Estrategia 2: Scrape reseñas externas
         if not out:
-            faq_sites = [
-                "https://www.aduana.gov.py/faq",
-                "https://www.bancard.com.py/faq",
-                f"https://www.google.com/search?q=FAQ+{'courier' if not self.query else self.query}+paraguay",
+            review_urls = [
+                f"https://www.google.com/search?q={'courier' if not self.query else self.query}+opiniones+paraguay",
+                f"https://www.google.com/search?q={'courier' if not self.query else self.query}+reseña+paraguay",
             ]
-            for url in faq_sites:
-                scraped = self._scrape_external_faq(url)
+            for url in review_urls:
+                scraped = self._scrape_review_html(url)
                 out.extend(scraped)
                 if out:
                     break
