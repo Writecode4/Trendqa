@@ -1,134 +1,179 @@
 import re
-import requests
+import feedparser
+import hashlib
 import json
-from datetime import datetime
+import requests
+from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
-from pytrends.request import TrendReq
 
 
-class GoogleTrendsIngestor:
-    def __init__(self, hl="es-419", tz=-240, geo="PY"):
-        self.pytrends = None
-        try:
-            self.pytrends = TrendReq(hl=hl, tz=tz)
-        except Exception:
-            pass
-        self.geo = geo
+class RSSIngestor:
+    def __init__(self, query=None, days=90):
+        self.limit_date = datetime.now() - timedelta(days=days)
+        self.query_words = [w for w in (query.lower().split() if query else []) if len(w) > 2 and w != "paraguay"]
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0.0.0",
             "Accept-Language": "es-419,es;q=0.9",
         }
-
-    def get_autocomplete(self, keyword, limit=10):
-        # Estrategia 1: API de Google Suggest
-        try:
-            r = requests.get(
-                "https://suggestqueries.google.com/complete/search",
-                params={"client": "firefox", "hl": "es", "q": keyword},
-                timeout=15,
-            )
-            if r.status_code == 200:
-                data = r.json()
-                return data[1][:limit] if len(data) > 1 else []
-        except Exception:
-            pass
-
-        # Estrategia 2: Scrape Google Suggest HTML
-        try:
-            r = requests.get(
-                "https://www.google.com/complete/search",
-                params={"q": keyword, "hl": "es", "client": "gws-wiz", "xssi": "t"},
-                headers=self.headers,
-                timeout=15,
-            )
-            if r.status_code == 200:
-                raw = r.text
-                matches = re.findall(r'\["(.*?)"', raw)
-                return [m for m in matches if len(m) > 2][:limit]
-        except Exception:
-            pass
-
-        return []
-
-    def _scrape_trends_page(self, keyword):
-        """Fallback: scrape Google Trends explore page directamente."""
-        result = {
-            "autocomplete": [],
-            "related_top": [],
-            "related_rising": [],
-            "interest_over_time": [],
+        self.feeds = {
+            "ABC Economía": "https://www.abc.com.py/arc/outboundfeeds/rss/category/economía/?outputType=xml",
+            "Última Hora Economía": "https://www.ultimahora.com/rss/economia.xml",
+            "La Nación Economía": "https://www.lanacion.com.py/rss/economia/",
+            "MarketData": "https://marketdata.com.py/feed/",
+            "ABC Negocios": "https://www.abc.com.py/arc/outboundfeeds/rss/category/negocios/?outputType=xml",
+            "Última Hora Negocios": "https://www.ultimahora.com/rss/negocios.xml",
         }
+
+    def _parse_entry(self, entry, source_name):
+        link = entry.get("link", "")
+        if not link:
+            return None
+
+        published = entry.get("published_parsed") or entry.get("updated_parsed")
+        dt_published = None
+        if published:
+            dt_published = datetime(*published[:6])
+            if dt_published < self.limit_date:
+                return None
+
+        title = (entry.get("title") or "").strip()
+        summary = (entry.get("summary") or entry.get("description") or "").strip()
+
+        if self.query_words:
+            haystack = f"{title.lower()} {summary.lower()}"
+            if not any(w in haystack for w in self.query_words):
+                return None
+
+        return {
+            "id": f"rss_{hashlib.md5(link.encode()).hexdigest()}",
+            "title": title,
+            "content": summary,
+            "url": link,
+            "author": entry.get("author"),
+            "created_utc": dt_published.timestamp() if dt_published else None,
+            "created_at": dt_published.isoformat() if dt_published else None,
+            "raw_json": json.dumps(dict(entry), default=str)[:20000],
+            "item_type": "rss_article",
+            "source_name": source_name,
+            "source_type": "rss",
+        }
+
+    def _scrape_feed_html(self, url, source_name):
+        """Fallback: scrape HTML de la página principal del medio cuando el feed XML falla."""
+        items = []
         try:
-            url = f"https://trends.google.com/trends/explore?geo={self.geo}&q={requests.utils.quote(keyword)}"
             r = requests.get(url, headers=self.headers, timeout=20)
             if r.status_code != 200:
-                return result
+                return items
             soup = BeautifulSoup(r.text, "html.parser")
-
-            # Extraer términos relacionados del HTML
-            related_blocks = (
-                soup.select("div[class*='related']")
-                or soup.select("div[class*='entity']")
-                or soup.select("div[class*='item']")
-                or []
+            articles = (
+                soup.select("article")
+                or soup.select("div[class*='article']")
+                or soup.select("div[class*='story']")
+                or soup.select("div[class*='post']")
+                or soup.select("div[class*='entry']")
+                or soup.find_all("div", class_=re.compile(r"article|story|post|entry|card|item"))
+                or [soup]
             )
             seen = set()
-            for block in related_blocks[:15]:
-                text = block.get_text(strip=True)
-                if text and len(text) > 2 and text not in seen:
-                    seen.add(text)
-                    result["related_top"].append(text)
+            for art in articles[:15]:
+                title = ""
+                for sel in ("h2 a", "h3 a", "h2", "h3", "a[class*='title']", "img[alt]"):
+                    el = art.select_one(sel)
+                    if el:
+                        title = el.get("alt", "") if el.name == "img" else el.get_text(strip=True)
+                        if title:
+                            break
+                if not title or title in seen:
+                    continue
+                seen.add(title)
+
+                link = ""
+                for sel in ("h2 a", "h3 a", "a[href]", "a[class*='link']"):
+                    el = art.select_one(sel)
+                    if el:
+                        href = el.get("href", "")
+                        if href and href != "#" and not href.startswith("#"):
+                            if href.startswith("/"):
+                                # Intentar extraer dominio base
+                                from urllib.parse import urlparse
+                                parsed = urlparse(url)
+                                href = f"{parsed.scheme}://{parsed.netloc}{href}"
+                            link = href
+                            break
+
+                summary = ""
+                for sel in ("p", "div[class*='summary']", "span[class*='summary']", "div[class*='excerpt']", "div[class*='description']"):
+                    el = art.select_one(sel)
+                    if el:
+                        summary = el.get_text(strip=True)[:500]
+                        if summary:
+                            break
+
+                if self.query_words:
+                    haystack = f"{title.lower()} {summary.lower()}"
+                    if not any(w in haystack for w in self.query_words):
+                        continue
+
+                items.append({
+                    "id": f"rss_html_{hashlib.md5((title + link).encode()).hexdigest()}",
+                    "title": title[:200],
+                    "content": summary or title,
+                    "url": link,
+                    "author": None,
+                    "created_utc": datetime.now().timestamp(),
+                    "created_at": datetime.now().isoformat(),
+                    "raw_json": None,
+                    "item_type": "rss_article",
+                    "source_name": f"{source_name} (scrape)",
+                    "source_type": "rss",
+                })
         except Exception:
             pass
+        return items
 
-        result["autocomplete"] = self.get_autocomplete(keyword)
-        return result
+    def fetch(self):
+        items = []
+        seen = set()
 
-    def get_trend_bundle(self, keyword):
-        result = {
-            "keyword": keyword,
-            "geo": self.geo,
-            "captured_at": datetime.now().isoformat(),
-            "autocomplete": [],
-            "related_top": [],
-            "related_rising": [],
-            "interest_over_time": [],
-        }
-
-        # Estrategia 1: pytrends library
-        if self.pytrends:
+        # Estrategia 1: feedparser
+        for name, url in self.feeds.items():
             try:
-                self.pytrends.build_payload([keyword], timeframe="today 12-m", geo=self.geo)
-                related = self.pytrends.related_queries()
-                if keyword in related and related[keyword]:
-                    top_df = related[keyword].get("top")
-                    rising_df = related[keyword].get("rising")
-                    if top_df is not None and not top_df.empty:
-                        result["related_top"] = top_df["query"].head(10).tolist()
-                    if rising_df is not None and not rising_df.empty:
-                        result["related_rising"] = rising_df["query"].head(10).tolist()
-                iot = self.pytrends.interest_over_time()
-                if iot is not None and not iot.empty:
-                    cols = [c for c in iot.columns if c != "isPartial"]
-                    if cols:
-                        key = cols[0]
-                        result["interest_over_time"] = [
-                            {"date": idx.strftime("%Y-%m-%d"), "value": int(row[key])}
-                            for idx, row in iot.iterrows()
-                        ]
+                feed = feedparser.parse(url)
+                for entry in feed.entries:
+                    parsed = self._parse_entry(entry, name)
+                    if parsed and parsed["url"] not in seen:
+                        seen.add(parsed["url"])
+                        items.append(parsed)
             except Exception:
-                pass
+                continue
 
-        # Estrategia 2: Scrape Google Trends como fallback
-        if not result["related_top"] and not result["interest_over_time"]:
-            scraped = self._scrape_trends_page(keyword)
-            result["related_top"] = scraped.get("related_top", [])
-            result["related_rising"] = scraped.get("related_rising", [])
+        # Estrategia 2: Si no hay suficientes items, scrape HTML directo de los sitios
+        if len(items) < 5:
+            html_feeds = {
+                "ABC Color": "https://www.abc.com.py/",
+                "Última Hora": "https://www.ultimahora.com/",
+                "La Nación": "https://www.lanacion.com.py/",
+                "MarketData": "https://marketdata.com.py/",
+            }
+            for name, url in html_feeds.items():
+                scraped = self._scrape_feed_html(url, name)
+                for s in scraped:
+                    if s["url"] not in seen:
+                        seen.add(s["url"])
+                        items.append(s)
 
-        # Estrategia 3: Autocomplete siempre via suggestqueries
-        result["autocomplete"] = self.get_autocomplete(keyword)
+        # Estrategia 3: Scrapear sección de economía directa si el query es económico
+        if len(items) < 5:
+            econ_urls = [
+                ("ABC Economía (scrape)", "https://www.abc.com.py/economia/"),
+                ("Última Hora Economía (scrape)", "https://www.ultimahora.com/economia/"),
+            ]
+            for name, url in econ_urls:
+                scraped = self._scrape_feed_html(url, name)
+                for s in scraped:
+                    if s["url"] not in seen:
+                        seen.add(s["url"])
+                        items.append(s)
 
-        return result
-
-    def get_topic_bundle(self, keywords):
-        return [self.get_trend_bundle(kw) for kw in keywords]
+        return items
