@@ -29,7 +29,7 @@ class FAQIngestor:
         """Fallback: buscar FAQs en sitios de referencia."""
         out = []
         try:
-            r = requests.get(url, headers=self.headers, timeout=8)
+            r = requests.get(url, headers=self.headers, timeout=15)
             if r.status_code != 200:
                 return out
             soup = BeautifulSoup(r.text, "html.parser")
