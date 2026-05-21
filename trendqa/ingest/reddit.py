@@ -26,7 +26,7 @@ class RedditIngestor:
     def get_comments(self, post_id, limit=10):
         url = f"https://www.reddit.com/comments/{post_id}.json?sort=top&limit={limit}"
         try:
-            r = requests.get(url, headers=self.headers, timeout=5)
+            r = requests.get(url, headers=self.headers, timeout=10)
             if r.status_code != 200:
                 return []
             data = r.json()
@@ -42,7 +42,7 @@ class RedditIngestor:
 
     def _fetch_json(self, url, limit):
         try:
-            r = requests.get(url, headers=self.headers, timeout=5)
+            r = requests.get(url, headers=self.headers, timeout=10)
             if r.status_code != 200:
                 return []
             posts = r.json().get("data", {}).get("children", [])
@@ -81,7 +81,7 @@ class RedditIngestor:
     def _scrape_html(self, url, limit):
         items = []
         try:
-            r = requests.get(url, headers={**self.headers, "Accept": "text/html"}, timeout=5)
+            r = requests.get(url, headers={**self.headers, "Accept": "text/html"}, timeout=10)
             if r.status_code != 200:
                 return items
             soup = BeautifulSoup(r.text, "html.parser")
