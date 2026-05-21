@@ -62,7 +62,7 @@ class RSSIngestor:
         """Fallback: scrape HTML de la página principal del medio cuando el feed XML falla."""
         items = []
         try:
-            r = requests.get(url, headers=self.headers, timeout=20)
+            r = requests.get(url, headers=self.headers, timeout=8)
             if r.status_code != 200:
                 return items
             soup = BeautifulSoup(r.text, "html.parser")
