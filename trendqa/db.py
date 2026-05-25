@@ -38,46 +38,35 @@ class Database:
                 CREATE TABLE IF NOT EXISTS items (
                     id TEXT PRIMARY KEY,
                     source_id INTEGER,
-                    title TEXT,
-                    content TEXT,
-                    url TEXT UNIQUE,
-                    author TEXT,
-                    created_utc REAL,
-                    created_at TEXT,
-                    raw_json TEXT,
-                    item_type TEXT,
+                    title TEXT, content TEXT, url TEXT UNIQUE, author TEXT,
+                    created_utc REAL, created_at TEXT, raw_json TEXT, item_type TEXT,
                     scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     processed_at TIMESTAMP,
                     FOREIGN KEY (source_id) REFERENCES sources (id) ON DELETE SET NULL
                 )
             """)
 
+            # Agrega columnas de forma segura (ignora si ya existen)
+            try: cursor.execute("ALTER TABLE items ADD COLUMN topic TEXT DEFAULT ''")
+            except: pass
+            try: cursor.execute("ALTER TABLE items ADD COLUMN pais TEXT DEFAULT 'paraguay'")
+            except: pass
+
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS questions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    item_id TEXT NOT NULL,
-                    question TEXT NOT NULL,
-                    category TEXT,
-                    confidence REAL,
-                    model_used TEXT,
-                    topic TEXT DEFAULT '',
+                    item_id TEXT NOT NULL, question TEXT NOT NULL, category TEXT,
+                    confidence REAL, model_used TEXT, topic TEXT DEFAULT '',
                     analyzed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (item_id) REFERENCES items (id) ON DELETE CASCADE
                 )
             """)
 
-            if not self.column_exists(conn, "questions", "topic"):
-                cursor.execute("ALTER TABLE questions ADD COLUMN topic TEXT DEFAULT ''")
-
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS trend_terms (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    keyword TEXT NOT NULL,
-                    related_top TEXT,
-                    related_rising TEXT,
-                    autocomplete TEXT,
-                    interest_over_time TEXT,
-                    geo TEXT DEFAULT 'PY',
+                    keyword TEXT NOT NULL, related_top TEXT, related_rising TEXT,
+                    autocomplete TEXT, interest_over_time TEXT, geo TEXT DEFAULT 'PY',
                     captured_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -85,9 +74,7 @@ class Database:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS reports (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    topic TEXT NOT NULL,
-                    period_label TEXT,
-                    summary_json TEXT NOT NULL,
+                    topic TEXT NOT NULL, period_label TEXT, summary_json TEXT NOT NULL,
                     generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -95,21 +82,10 @@ class Database:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS processing_log (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    step TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    message TEXT,
+                    step TEXT NOT NULL, status TEXT NOT NULL, message TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_items_source_id ON items(source_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_items_created_utc ON items(created_utc)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_items_processed_at ON items(processed_at)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_questions_item_id ON questions(item_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_questions_analyzed_at ON questions(analyzed_at)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_trend_terms_keyword ON trend_terms(keyword)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_reports_topic ON reports(topic)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_processing_log_step ON processing_log(step)")
 
             conn.commit()
 
@@ -134,15 +110,17 @@ class Database:
             source_id = item.get("source_id")
             title = item.get("title")
             content = item.get("content")
+            topic = item.get("topic", "")
+            pais = item.get("pais", "paraguay")
 
             if url:
                 cursor.execute("SELECT id FROM items WHERE url = ?", (url,))
                 existing = cursor.fetchone()
                 if existing:
                     cursor.execute("""
-                        UPDATE items SET source_id=?, title=?, content=?, scraped_at=CURRENT_TIMESTAMP
+                        UPDATE items SET source_id=?, title=?, content=?, topic=?, pais=?, scraped_at=CURRENT_TIMESTAMP
                         WHERE id=?
-                    """, (source_id, title, content, existing[0]))
+                    """, (source_id, title, content, topic, pais, existing[0]))
                     conn.commit()
                     return existing[0]
 
@@ -150,27 +128,20 @@ class Database:
                 cursor.execute("SELECT id FROM items WHERE id = ?", (item_id,))
                 if cursor.fetchone():
                     cursor.execute("""
-                        UPDATE items SET source_id=?, title=?, content=?, url=?, scraped_at=CURRENT_TIMESTAMP
+                        UPDATE items SET source_id=?, title=?, content=?, url=?, topic=?, pais=?, scraped_at=CURRENT_TIMESTAMP
                         WHERE id=?
-                    """, (source_id, title, content, url, item_id))
+                    """, (source_id, title, content, url, topic, pais, item_id))
                     conn.commit()
                     return item_id
 
             cursor.execute("""
                 INSERT INTO items
-                (id, source_id, title, content, url, author, created_utc, created_at, raw_json, item_type)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, source_id, title, content, url, author, created_utc, created_at, raw_json, item_type, topic, pais)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                item_id,
-                source_id,
-                title,
-                content,
-                url,
-                item.get("author"),
-                item.get("created_utc"),
-                item.get("created_at"),
-                item.get("raw_json"),
-                item.get("item_type", "post")
+                item_id, source_id, title, content, url, item.get("author"),
+                item.get("created_utc"), item.get("created_at"), item.get("raw_json"),
+                item.get("item_type", "post"), topic, pais
             ))
             conn.commit()
             return item_id
@@ -279,12 +250,10 @@ class Database:
             return cursor.fetchone()
 
     def get_question_trends(self, topic="", recent_days=30):
-        """Compara frecuencia de preguntas recientes vs históricas."""
         from datetime import datetime, timedelta
         cutoff = (datetime.now() - timedelta(days=recent_days)).isoformat()
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            # Preguntas recientes
             cursor.execute("""
                 SELECT question, COUNT(*) as freq
                 FROM questions
@@ -294,7 +263,6 @@ class Database:
                 LIMIT 20
             """, (topic, cutoff))
             recent = dict(cursor.fetchall())
-            # Preguntas anteriores al período reciente
             cursor.execute("""
                 SELECT question, COUNT(*) as freq
                 FROM questions
