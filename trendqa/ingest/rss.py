@@ -1,179 +1,129 @@
-import re
-import feedparser
-import hashlib
-import json
 import requests
-from datetime import datetime, timedelta
-from bs4 import BeautifulSoup
+import time
+import hashlib
+import xml.etree.ElementTree as ET
+from pathlib import Path
+from datetime import datetime
+
+# Configuración de caché en disco
+CACHE_DIR = Path("/tmp/rss_cache")
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+CACHE_TTL = 1800  # 30 minutos
+
+def _cached_get(url, headers, timeout=10):
+    """GET con caché en disco para feeds RSS."""
+    cache_key = hashlib.md5(f"rss:{url}".encode()).hexdigest()
+    cache_file = CACHE_DIR / f"{cache_key}.xml"
+    
+    if cache_file.exists():
+        if time.time() - cache_file.stat().st_mtime < CACHE_TTL:
+            return cache_file.read_text(errors="ignore"), True
+            
+    try:
+        r = requests.get(url, headers=headers, timeout=timeout)
+        if r.status_code == 200:
+            cache_file.write_text(r.text, encoding="utf-8")
+            return r.text, False
+    except Exception:
+        pass
+    return None, False
 
 
 class RSSIngestor:
-    def __init__(self, query=None, days=90):
-        self.limit_date = datetime.now() - timedelta(days=days)
-        self.query_words = [w for w in (query.lower().split() if query else []) if len(w) > 2 and w != "paraguay"]
+    def __init__(self, query=None, pais="paraguay", **kwargs):
+        self.query = query or ""
+        self.pais = pais.lower()
         self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0.0.0",
-            "Accept-Language": "es-419,es;q=0.9",
-        }
-        self.feeds = {
-            "ABC Economía": "https://www.abc.com.py/arc/outboundfeeds/rss/category/economía/?outputType=xml",
-            "Última Hora Economía": "https://www.ultimahora.com/rss/economia.xml",
-            "La Nación Economía": "https://www.lanacion.com.py/rss/economia/",
-            "MarketData": "https://marketdata.com.py/feed/",
-            "ABC Negocios": "https://www.abc.com.py/arc/outboundfeeds/rss/category/negocios/?outputType=xml",
-            "Última Hora Negocios": "https://www.ultimahora.com/rss/negocios.xml",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/rss+xml, application/xml, text/xml, */*"
         }
 
-    def _parse_entry(self, entry, source_name):
-        link = entry.get("link", "")
-        if not link:
-            return None
+    def _is_ecommerce_relevant(self, title, content):
+        """Filtra artículos que NO son sobre e-commerce/compras online."""
+        text = f"{title} {content}".lower()
+        
+        # ✅ Señales que CONFIRMAN contexto e-commerce
+        ecommerce_signals = [
+            "tienda online", "e-commerce", "marketplace", "compra online", 
+            "envío", "courier", "delivery", "pedido", "carrito", "checkout",
+            "mercadolibre", "shopify", "paypal", "tarjeta", "pago online",
+            "seguimiento", "tracking", "aduana", "importación", "devolución"
+        ]
+        
+        # ✅ Señales que DESCARTAN contexto (política, deportes, notas rojas, etc.)
+        exclude_signals = [
+            "gobierno del estado", "mesa de diálogo", "comisión de seguimiento",
+            "política sectorial", "gobernanza", "transparencia pública",
+            "torneo", "partido", "sec 2026", "baseball", "fútbol",
+            "muerte de", "homicidio", "bloqueos", "protesta", "manifestación",
+            "salud y defensoría", "hueycantenango", "chilapa"
+        ]
+        
+        if any(exc in text for exc in exclude_signals):
+            return False
+        return any(sig in text for sig in ecommerce_signals)
 
-        published = entry.get("published_parsed") or entry.get("updated_parsed")
-        dt_published = None
-        if published:
-            dt_published = datetime(*published[:6])
-            if dt_published < self.limit_date:
-                return None
+    def fetch(self, **kwargs):
+        """Obtiene artículos RSS con caché, timeout, país y filtro de relevancia."""
+        limit = kwargs.get("limit", kwargs.get("max_results", 10))
+        if not self.query:
+            return []
 
-        title = (entry.get("title") or "").strip()
-        summary = (entry.get("summary") or entry.get("description") or "").strip()
-
-        if self.query_words:
-            haystack = f"{title.lower()} {summary.lower()}"
-            if not any(w in haystack for w in self.query_words):
-                return None
-
-        return {
-            "id": f"rss_{hashlib.md5(link.encode()).hexdigest()}",
-            "title": title,
-            "content": summary,
-            "url": link,
-            "author": entry.get("author"),
-            "created_utc": dt_published.timestamp() if dt_published else None,
-            "created_at": dt_published.isoformat() if dt_published else None,
-            "raw_json": json.dumps(dict(entry), default=str)[:20000],
-            "item_type": "rss_article",
-            "source_name": source_name,
-            "source_type": "rss",
-        }
-
-    def _scrape_feed_html(self, url, source_name):
-        """Fallback: scrape HTML de la página principal del medio cuando el feed XML falla."""
         items = []
-        try:
-            r = requests.get(url, headers=self.headers, timeout=20)
-            if r.status_code != 200:
-                return items
-            soup = BeautifulSoup(r.text, "html.parser")
-            articles = (
-                soup.select("article")
-                or soup.select("div[class*='article']")
-                or soup.select("div[class*='story']")
-                or soup.select("div[class*='post']")
-                or soup.select("div[class*='entry']")
-                or soup.find_all("div", class_=re.compile(r"article|story|post|entry|card|item"))
-                or [soup]
-            )
-            seen = set()
-            for art in articles[:15]:
-                title = ""
-                for sel in ("h2 a", "h3 a", "h2", "h3", "a[class*='title']", "img[alt]"):
-                    el = art.select_one(sel)
-                    if el:
-                        title = el.get("alt", "") if el.name == "img" else el.get_text(strip=True)
-                        if title:
-                            break
-                if not title or title in seen:
-                    continue
-                seen.add(title)
+        now = datetime.now()
+        
+        # Feeds ajustados por país
+        gl, ceid = {"paraguay": ("PY", "PY:es-419"), "argentina": ("AR", "AR:es-419"), "mexico": ("MX", "MX:es-419")}.get(self.pais, ("PY", "PY:es-419"))
+        feeds = [
+            f"https://news.google.com/rss/search?q={requests.utils.quote(self.query)}&hl=es-419&gl={gl}&ceid={ceid}",
+            f"https://www.reddit.com/search.rss?q={requests.utils.quote(self.query)}&restrict_sr=off&sort=new&t=month",
+        ]
 
-                link = ""
-                for sel in ("h2 a", "h3 a", "a[href]", "a[class*='link']"):
-                    el = art.select_one(sel)
-                    if el:
-                        href = el.get("href", "")
-                        if href and href != "#" and not href.startswith("#"):
-                            if href.startswith("/"):
-                                # Intentar extraer dominio base
-                                from urllib.parse import urlparse
-                                parsed = urlparse(url)
-                                href = f"{parsed.scheme}://{parsed.netloc}{href}"
-                            link = href
-                            break
-
-                summary = ""
-                for sel in ("p", "div[class*='summary']", "span[class*='summary']", "div[class*='excerpt']", "div[class*='description']"):
-                    el = art.select_one(sel)
-                    if el:
-                        summary = el.get_text(strip=True)[:500]
-                        if summary:
-                            break
-
-                if self.query_words:
-                    haystack = f"{title.lower()} {summary.lower()}"
-                    if not any(w in haystack for w in self.query_words):
-                        continue
-
-                items.append({
-                    "id": f"rss_html_{hashlib.md5((title + link).encode()).hexdigest()}",
-                    "title": title[:200],
-                    "content": summary or title,
-                    "url": link,
-                    "author": None,
-                    "created_utc": datetime.now().timestamp(),
-                    "created_at": datetime.now().isoformat(),
-                    "raw_json": None,
-                    "item_type": "rss_article",
-                    "source_name": f"{source_name} (scrape)",
-                    "source_type": "rss",
-                })
-        except Exception:
-            pass
-        return items
-
-    def fetch(self):
-        items = []
-        seen = set()
-
-        # Estrategia 1: feedparser
-        for name, url in self.feeds.items():
-            try:
-                feed = feedparser.parse(url)
-                for entry in feed.entries:
-                    parsed = self._parse_entry(entry, name)
-                    if parsed and parsed["url"] not in seen:
-                        seen.add(parsed["url"])
-                        items.append(parsed)
-            except Exception:
+        for url in feeds:
+            if len(items) >= limit:
+                break
+                
+            xml_content, _ = _cached_get(url, self.headers, timeout=8)
+            if not xml_content:
                 continue
 
-        # Estrategia 2: Si no hay suficientes items, scrape HTML directo de los sitios
-        if len(items) < 5:
-            html_feeds = {
-                "ABC Color": "https://www.abc.com.py/",
-                "Última Hora": "https://www.ultimahora.com/",
-                "La Nación": "https://www.lanacion.com.py/",
-                "MarketData": "https://marketdata.com.py/",
-            }
-            for name, url in html_feeds.items():
-                scraped = self._scrape_feed_html(url, name)
-                for s in scraped:
-                    if s["url"] not in seen:
-                        seen.add(s["url"])
-                        items.append(s)
+            try:
+                root = ET.fromstring(xml_content)
+                channel = root.find("channel")
+                if channel is None:
+                    continue
+                    
+                for entry in channel.findall("item"):
+                    if len(items) >= limit:
+                        break
+                        
+                    title_el = entry.find("title")
+                    link_el = entry.find("link")
+                    desc_el = entry.find("description")
+                    pub_el = entry.find("pubDate")
+                    
+                    title = title_el.text.strip() if title_el is not None and title_el.text else ""
+                    if not title or len(title) < 8:
+                        continue
+                    
+                    # ✅ AQUÍ ESTÁ EL FILTRO EXACTO
+                    if not self._is_ecommerce_relevant(title, desc_el.text or ""):
+                        continue
+                        
+                    items.append({
+                        "id": f"rss_{hashlib.md5(title.encode()).hexdigest()[:10]}",
+                        "title": title[:250],
+                        "content": (desc_el.text or "")[:400],
+                        "url": link_el.text or "",
+                        "author": "RSS Feed",
+                        "created_utc": None,
+                        "created_at": pub_el.text if pub_el is not None else now.isoformat(),
+                        "raw_json": None,
+                        "item_type": "rss_article",
+                        "source_name": "RSS (Medios/Foros)",
+                        "source_type": "rss",
+                    })
+            except ET.ParseError:
+                continue
 
-        # Estrategia 3: Scrapear sección de economía directa si el query es económico
-        if len(items) < 5:
-            econ_urls = [
-                ("ABC Economía (scrape)", "https://www.abc.com.py/economia/"),
-                ("Última Hora Economía (scrape)", "https://www.ultimahora.com/economia/"),
-            ]
-            for name, url in econ_urls:
-                scraped = self._scrape_feed_html(url, name)
-                for s in scraped:
-                    if s["url"] not in seen:
-                        seen.add(s["url"])
-                        items.append(s)
-
-        return items
+        return items[:limit]
