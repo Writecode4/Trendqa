@@ -9,6 +9,24 @@ from groq import Groq, RateLimitError
 from .normalize import TextNormalizer
 
 
+def _safe_parse_json(raw_text):
+    """Extrae JSON de forma segura, limpiando markdown y manejando respuestas vacías."""
+    if not raw_text or not isinstance(raw_text, str):
+        return None
+    try:
+        text = raw_text.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[-1]
+        if text.endswith("```"):
+            text = text.rsplit("\n", 1)[0]
+        text = text.strip()
+        if not text:
+            return None
+        return json.loads(text)
+    except (json.JSONDecodeError, IndexError, ValueError):
+        return None
+
+
 class TrendAnalyzer:
     def __init__(self):
         self.normalizer = TextNormalizer()
@@ -56,7 +74,6 @@ CATEGORY_KEYWORDS = {
 
 
 def _categorize_by_keywords(text):
-    """Fallback cuando GROQ no está disponible."""
     text_lower = text.lower()
     scores = {}
     for cat, words in CATEGORY_KEYWORDS.items():
@@ -75,8 +92,12 @@ class QuestionAnalyzer:
         "marcas_proveedores", "otros"
     )
 
-    def __init__(self, max_items=5):
+    def __init__(self, max_items=5, pais=None):
+        if not pais or pais.lower() not in {"paraguay", "argentina", "mexico"}:
+            raise ValueError(f"QuestionAnalyzer requiere 'pais' válido. Recibido: '{pais}'")
+        
         self.max_items = max_items
+        self.pais = pais.title()  # Argentina, Mexico, Paraguay
         api_key = os.getenv("GROQ_API_KEY")
         self.client = None
         self.model = None
@@ -91,9 +112,7 @@ class QuestionAnalyzer:
         msg = str(error_msg)
         match = re.search(r"try again in (\d+)m([0-9.]+)?s", msg)
         if match:
-            minutes = int(match.group(1))
-            seconds = float(match.group(2) or 0)
-            return minutes * 60 + seconds
+            return int(match.group(1)) * 60 + float(match.group(2) or 0)
         match = re.search(r"try again in ([0-9.]+)s", msg)
         if match:
             return float(match.group(1))
@@ -105,7 +124,7 @@ class QuestionAnalyzer:
 
         CAT_DESC = {
             "experiencia_compra": "pedidos, compras, devoluciones, garantía, rastreo, reclamos, cambios, soporte post-venta",
-            "pagos_financiacion": "métodos de pago, tarjetas, cuotas, financiación, Bancard, billeteras digitales, seguridad en pagos",
+            "pagos_financiacion": "métodos de pago, tarjetas, cuotas, financiación, billeteras digitales, seguridad en pagos",
             "confianza_seguridad": "confiabilidad de tiendas, estafas, reseñas falsas, verificación, reputación online",
             "plataformas_canales": "marketplaces, tienda propia, Instagram, Facebook, Shopify, MercadoLibre, dónde vender",
             "logistica_envios": "costos, tiempos, cobertura, seguimiento de envíos, couriers, puntos de entrega, aduana",
@@ -115,7 +134,7 @@ class QuestionAnalyzer:
         }
         cat_list = "\n".join(f'  - "{k}": {v}' for k, v in CAT_DESC.items())
 
-        prompt = f"""Analizá el siguiente post de e-commerce en Paraguay y extraé las preguntas o dudas que el usuario está planteando.
+        prompt = f"""Analizá el siguiente post sobre e-commerce en {self.pais} y extraé las preguntas o dudas que el usuario está planteando.
 
 Título: {title[:200]}
 Contenido: {content[:500]}
@@ -138,31 +157,33 @@ Si no hay preguntas claras, devolvé [].
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.1,
                 )
-                raw = response.choices[0].message.content.strip()
-                raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```")
-                data = json.loads(raw)
+                
+                raw = response.choices[0].message.content if response.choices else None
+                if not raw:
+                    return self._fallback(title, content)
+
+                data = _safe_parse_json(raw)
+                if data is None:
+                    return self._fallback(title, content)
+
                 if isinstance(data, dict):
                     return data.get("preguntas", data.get("questions", []))
                 return data if isinstance(data, list) else []
+
             except RateLimitError as e:
                 msg = str(e)
-                # Daily limit (TPD) — no esperar, fallback directo
-                if "tokens per day" in msg:
-                    print(f"  Límite diario alcanzado, usando fallback por keywords")
+                if "tokens per day" in msg or "over capacity" in msg or "503" in msg:
                     return self._fallback(title, content)
                 wait = self._parse_retry_after(msg)
-                wait = min(wait, 20)
-                print(f"  Límite excedido, esperando {wait:.0f}s (intento {attempt + 1}/{retries})")
+                wait = min(wait, 15)
                 if attempt < retries - 1:
                     time.sleep(wait)
-            except Exception as e:
-                print(f"  GROQ error: {e}")
+            except Exception:
                 if attempt < retries - 1:
-                    time.sleep(5)
+                    time.sleep(3)
         return self._fallback(title, content)
 
     def _fallback(self, title, content):
-        """Categorización por keywords cuando GROQ no está disponible."""
         text = f"{title} {content}"
         cat = _categorize_by_keywords(text)
         return [{
@@ -193,7 +214,7 @@ Si no hay preguntas claras, devolvé [].
                     "source_type": item.get("source_type", "unknown"),
                     "source_name": item.get("source_name", ""),
                 })
-            time.sleep(1)
+            time.sleep(0.5)
         return results
 
 
@@ -202,13 +223,12 @@ BRAND_KEYWORDS = [
     "shein", "wish", "temu", "amway", "herbalife", "natura", "avon",
     "bancard", "visa", "mastercard", "paypal", "cripto", "binance",
     "personal", "tigo", "claro", "vox", "wom",
-    "sodimac", "easy", "ta´¢", "stock", "biggie", "superseis", "salvajorge",
-    "pedidosya", "bigbox", "letyshops", "courier", "dhl", "fedex", "ups",
-    "paraguay", "instagram", "facebook", "whatsapp", "google",
+    "sodimac", "easy", "stock", "biggie", "superseis",
+    "pedidosya", "bigbox", "courier", "dhl", "fedex", "ups",
+    "paraguay", "argentina", "mexico", "instagram", "facebook", "whatsapp", "google",
 ]
 
 def _extract_brands_keyword(text):
-    """Extrae marcas/empresas mencionadas por coincidencia de keywords."""
     text_lower = text.lower()
     found = []
     for kw in BRAND_KEYWORDS:
@@ -222,7 +242,8 @@ def _extract_brands_keyword(text):
 
 
 class BrandExtractor:
-    def __init__(self):
+    def __init__(self, pais=None):
+        self.pais = pais.title() if pais else "Latam"
         api_key = os.getenv("GROQ_API_KEY")
         self.client = None
         self.model = None
@@ -242,7 +263,7 @@ class BrandExtractor:
         )[:3000]
 
         if self.client:
-            prompt = f"""De los siguientes textos sobre e-commerce en Paraguay, extraé las 2 marcas o empresas más mencionadas. Respondé SOLO con un JSON array de strings, ej: ["Courier A", "Bancard"]. Si no hay marcas claras, devolvé [].
+            prompt = f"""De los siguientes textos sobre e-commerce en {self.pais}, extraé las 2 marcas o empresas más mencionadas. Respondé SOLO con un JSON array de strings, ej: ["Courier A", "Bancard"]. Si no hay marcas claras, devolvé [].
 
 Textos: {text}
 """
@@ -253,20 +274,17 @@ Textos: {text}
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.1,
                     )
-                    raw = response.choices[0].message.content.strip()
-                    raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```")
-                    brands = json.loads(raw)[:2]
-                    if brands:
-                        return brands
+                    raw = response.choices[0].message.content if response.choices else None
+                    if not raw:
+                        break
+                    brands = _safe_parse_json(raw)
+                    if isinstance(brands, list) and brands:
+                        return [str(b) for b in brands[:2]]
                 except RateLimitError as e:
                     msg = str(e)
-                    if "tokens per day" in msg:
-                        print(f"  Límite diario GROQ, usando fallback por keywords")
+                    if "tokens per day" in msg or "over capacity" in msg or "503" in msg:
                         break
-                    print(f"  BrandExtractor rate limit, fallback")
-                    break
-                except Exception as e:
-                    print(f"  BrandExtractor error: {e}")
+                except Exception:
                     break
 
         brands = _extract_brands_keyword(text)
@@ -280,19 +298,17 @@ NEGATIVE_WORDS = ["malo", "pésimo", "horrible", "estafa", "robo", "lento", "car
 
 
 def _analyze_sentiment(text):
-    """Análisis de sentimiento por keywords (fallback)."""
     text_lower = text.lower()
     pos = sum(1 for w in POSITIVE_WORDS if w in text_lower)
     neg = sum(1 for w in NEGATIVE_WORDS if w in text_lower)
-    if pos > neg:
-        return "positivo"
-    if neg > pos:
-        return "negativo"
+    if pos > neg: return "positivo"
+    if neg > pos: return "negativo"
     return "neutral"
 
 
 class AnswerAnalyzer:
-    def __init__(self):
+    def __init__(self, pais=None):
+        self.pais = pais.title() if pais else "Latam"
         api_key = os.getenv("GROQ_API_KEY")
         self.client = None
         self.model = None
@@ -304,7 +320,6 @@ class AnswerAnalyzer:
                 pass
 
     def _extract_comments(self, content):
-        """Extrae comentarios del contenido (formato: TOP COMMENTS: ...)."""
         if "TOP COMMENTS:" in content:
             parts = content.split("TOP COMMENTS:")
             comments = parts[-1].split(" | ")
@@ -312,7 +327,6 @@ class AnswerAnalyzer:
         return []
 
     def analyze(self, item_title, item_content):
-        """Analiza respuestas/comentarios de un item."""
         comments = self._extract_comments(item_content)
         if not comments:
             return {"hay_respuestas": False, "sentimiento": "sin_datos", "resumen": None}
@@ -320,7 +334,7 @@ class AnswerAnalyzer:
         text = " | ".join(comments)[:1000]
 
         if self.client:
-            prompt = f"""Analizá estos comentarios/respuestas sobre e-commerce en Paraguay.
+            prompt = f"""Analizá estos comentarios/respuestas sobre e-commerce en {self.pais}.
 
 Comentarios: {text}
 
@@ -333,16 +347,17 @@ Respondé SOLO con un JSON:
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.1,
                 )
-                raw = response.choices[0].message.content.strip()
-                raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```")
-                data = json.loads(raw)
-                return {
-                    "hay_respuestas": True,
-                    "sentimiento": data.get("sentimiento", "neutral"),
-                    "resuelve_duda": data.get("resuelve_duda", "no"),
-                    "resumen": data.get("resumen", ""),
-                    "cantidad_comentarios": len(comments),
-                }
+                raw = response.choices[0].message.content if response.choices else None
+                if raw:
+                    data = _safe_parse_json(raw)
+                    if isinstance(data, dict):
+                        return {
+                            "hay_respuestas": True,
+                            "sentimiento": data.get("sentimiento", "neutral"),
+                            "resuelve_duda": data.get("resuelve_duda", "no"),
+                            "resumen": data.get("resumen", ""),
+                            "cantidad_comentarios": len(comments),
+                        }
             except Exception:
                 pass
 
