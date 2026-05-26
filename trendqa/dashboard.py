@@ -32,7 +32,7 @@ load_dotenv(BASE / ".env")
 dashboard_bp = Blueprint("dashboard", __name__)
 logger = logging.getLogger(__name__)
 
-VALID_COUNTRIES = {"paraguay", "argentina", "mexico"}
+VALID_COUNTRIES = {"paraguay", "argentina", "mexico", "colombia"}
 
 SEARCH_TERMS = {
     "experiencia_compra": ["compra", "pedido", "devolución", "garantía", "rastreo", "reclamo", "cancelar", "cambio", "soporte", "seguimiento"],
@@ -50,6 +50,7 @@ def expand_terms(q, pais=None):
         "paraguay": ["online", "e-commerce", "tienda virtual", "marketplace", "courier"],
         "argentina": ["online", "e-commerce", "tienda virtual", "mercadolibre", "envío"],
         "mexico": ["online", "e-commerce", "tienda en línea", "mercadolibre", "paquetería"],
+        "colombia": ["online", "e-commerce", "tienda virtual", "mercadolibre", "envío"],
     }
     if pais and pais.lower() in ecommerce_modifiers:
         modifiers = ecommerce_modifiers[pais.lower()]
