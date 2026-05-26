@@ -93,7 +93,7 @@ class QuestionAnalyzer:
     )
 
     def __init__(self, max_items=5, pais=None):
-        if not pais or pais.lower() not in {"paraguay", "argentina", "mexico"}:
+        if not pais or pais.lower() not in {"paraguay", "argentina", "mexico", "colombia"}:
             raise ValueError(f"QuestionAnalyzer requiere 'pais' válido. Recibido: '{pais}'")
         
         self.max_items = max_items
