@@ -6,14 +6,14 @@
   <title>TrendQA Dashboard</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="https://sikuri.lat/css/style.css">
-  <link rel="stylesheet" href="https://sikuri.lat/css/trendqa.css')">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/trendqa.css') }}">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <nav class="navbar">
     <div class="nav-container">
       <div style="display:flex;align-items:center;gap:0.75rem;">
-        <img src="https://sikuri.lat/images/logo-sikuri.png" alt="SIKURI" class="brand-logo" onerror="this.style.display='none'">
+        <img src="{{ url_for('static', filename='images/logo-sikuri.png') }}" alt="SIKURI" class="brand-logo" onerror="this.style.display='none'">
         <span class="brand-name">SIKURI</span>
       </div>
       <div class="nav-links">
@@ -45,7 +45,7 @@
       </div>
     {% else %}
       <header class="hero">
-        <div><h1>TrendQA</h1><p>{{ summary.topic }}</p></div>
+        <div><h1>TrendQA</h1><p>{{ summary.topic }} · {{ summary.pais | capitalize }}</p></div>
         <div class="actions">
           <!--<a href="https://sikuri.lat/contacto.html?redirect_to={{ url_for('dashboard.download_pdf', _external=True, topic=summary.topic, pais=summary.pais) }}&topic={{ summary.topic }}&pais={{ summary.pais }}" class="btn">Descargar PDF</a>-->
           <a href="https://sikuri.lat/contacto.html?topic={{ summary.topic }}&pais={{ summary.pais }}" class="btn">Descargar PDF</a>
