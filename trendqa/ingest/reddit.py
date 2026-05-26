@@ -1,167 +1,122 @@
-import re
+import json
+import time
+import hashlib
 import requests
-from datetime import datetime, timedelta
-from bs4 import BeautifulSoup
+import os
+from pathlib import Path
+from datetime import datetime
+
+# Configuración de caché (compatible Windows/Linux)
+CACHE_DIR = Path(os.getenv("TEMP", "/tmp")) / "reddit_cache"
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+CACHE_TTL = 1800  # 30 minutos
+MAX_RESPONSE_SIZE = 200_000
+
+def _cached_get(url, headers, timeout=10):
+    """GET con caché en disco y límite de tamaño."""
+    cache_key = hashlib.md5(url.encode()).hexdigest()
+    cache_file = CACHE_DIR / f"{cache_key}.json"
+
+    if cache_file.exists():
+        try:
+            data = json.loads(cache_file.read_text())
+            if time.time() - data["ts"] < CACHE_TTL:
+                return data["content"], True
+        except:
+            cache_file.unlink(missing_ok=True)
+
+    try:
+        r = requests.get(url, headers=headers, timeout=timeout, stream=True)
+        if r.status_code != 200:
+            return None, False
+        content = b""
+        for chunk in r.iter_content(chunk_size=8192):
+            content += chunk
+            if len(content) >= MAX_RESPONSE_SIZE:
+                break
+        text = content.decode("utf-8", errors="ignore")[:MAX_RESPONSE_SIZE]
+        if '"children"' in text:
+            cache_file.write_text(json.dumps({"ts": time.time(), "content": text}))
+        return text, False
+    except Exception:
+        return None, False
 
 
 class RedditIngestor:
-    def __init__(self, query=None, subreddit="Paraguay", days=90):
-        self.subreddit = subreddit
-        self.limit_date = datetime.now() - timedelta(days=days)
-        self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0.0.0",
-            "Accept": "application/json, text/html, */*",
-        }
+    def __init__(self, query=None, subreddit=None, **kwargs):
         self.query = query or ""
-        self.query_words = [w for w in (query.lower().split() if query else []) if len(w) > 2 and w != "paraguay"]
+        self.subreddit = subreddit
+        self.headers = {
+            "User-Agent": "TrendQA/1.0 (https://api.sikuri.lat; trendqa@contact.com)",
+            "Accept": "application/json"
+        }
 
-    def is_recent(self, created_utc):
-        if not created_utc:
-            return False
-        try:
-            return datetime.fromtimestamp(created_utc) > self.limit_date
-        except Exception:
-            return False
+    def fetch(self, **kwargs):
+        """Obtiene posts de Reddit con parseo 100% defensivo."""
+        limit = kwargs.get("limit", kwargs.get("max_results", 10))
+        if not self.query:
+            return []
 
-    def get_comments(self, post_id, limit=10):
-        url = f"https://www.reddit.com/comments/{post_id}.json?sort=top&limit={limit}"
+        items = []
+        url = f"https://www.reddit.com/search.json?q={requests.utils.quote(self.query)}&limit=25&sort=new&t=month"
+        if self.subreddit:
+            url = f"https://www.reddit.com/r/{self.subreddit}/search.json?q={requests.utils.quote(self.query)}&restrict_sr=on&limit=25&sort=new"
+
+        html, _ = _cached_get(url, self.headers, timeout=12)
+        if not html:
+            return []
+
         try:
-            r = requests.get(url, headers=self.headers, timeout=10)
-            if r.status_code != 200:
-                return []
-            data = r.json()
-            comments = data[1].get("data", {}).get("children", [])
-            out = []
-            for c in comments:
-                body = c.get("data", {}).get("body", "")
-                if body and body not in ("[deleted]", "[removed]"):
-                    out.append(body.strip())
-            return out[:limit]
+            data = json.loads(html)
+            if not isinstance(data, dict): return []
+            data_section = data.get("data")
+            if not isinstance(data_section, dict): return []
+            posts = data_section.get("children", [])
+            if not isinstance(posts, list): return []
         except Exception:
             return []
 
-    def _fetch_json(self, url, limit):
-        try:
-            r = requests.get(url, headers=self.headers, timeout=10)
-            if r.status_code != 200:
-                return []
-            posts = r.json().get("data", {}).get("children", [])
-            items = []
-            for p in posts:
-                d = p.get("data", {})
-                post_id = d.get("id")
-                created_utc = d.get("created_utc")
-                if not post_id or not self.is_recent(created_utc):
+        now = datetime.now()
+        for post in posts:
+            try:
+                if len(items) >= limit:
+                    break
+                if not isinstance(post, dict):
                     continue
-                title = (d.get("title") or "").strip()
-                body = (d.get("selftext") or "").strip()
-                comments = self.get_comments(post_id) if body else []
-                content = title
-                if body:
-                    content += "\n\n" + body
-                if comments:
-                    content += "\n\nTOP COMMENTS:\n" + " | ".join(comments)
+                    
+                d = post.get("data")
+                if not isinstance(d, dict):
+                    continue
+
+                title = d.get("title")
+                if not isinstance(title, str) or not title.strip():
+                    continue
+
+                # Timestamp seguro (maneja int, float, string o None)
+                utc = d.get("created_utc")
+                if utc:
+                    try:
+                        created_at = datetime.fromtimestamp(float(utc)).isoformat()
+                    except Exception:
+                        created_at = now.isoformat()
+                else:
+                    created_at = now.isoformat()
+
                 items.append({
-                    "id": post_id,
-                    "title": title,
-                    "content": content,
+                    "id": f"reddit_{d.get('id', hash(title))}",
+                    "title": title.strip()[:250],
+                    "content": (d.get("selftext") or d.get("link_flair_text") or "")[:400],
                     "url": f"https://reddit.com{d.get('permalink', '')}",
-                    "author": d.get("author"),
-                    "created_utc": created_utc,
-                    "created_at": datetime.fromtimestamp(created_utc).isoformat() if created_utc else None,
+                    "author": d.get("author") or "anonymous",
+                    "created_utc": utc,
+                    "created_at": created_at,
                     "raw_json": None,
                     "item_type": "reddit_post",
-                    "source_name": f"r/{self.subreddit}",
+                    "source_name": "Reddit",
                     "source_type": "reddit",
                 })
-            return items
-        except Exception:
-            return []
+            except Exception:
+                # Si un post específico está corrupto, lo saltamos sin romper el loop
+                continue
 
-    def _scrape_html(self, url, limit):
-        items = []
-        try:
-            r = requests.get(url, headers={**self.headers, "Accept": "text/html"}, timeout=10)
-            if r.status_code != 200:
-                return items
-            soup = BeautifulSoup(r.text, "html.parser")
-            posts = (
-                soup.select("div[data-testid='post-container']")
-                or soup.select("div.Post")
-                or soup.find_all("div", class_=re.compile(r"post|Post"))
-                or [soup]
-            )
-            for post in posts[:limit]:
-                title = ""
-                for sel in ("h3", "a[data-click-id='title']"):
-                    el = post.select_one(sel)
-                    if el:
-                        title = el.get_text(strip=True)
-                        if title:
-                            break
-                if not title:
-                    continue
-                body = ""
-                el = post.select_one("p")
-                if el:
-                    body = el.get_text(strip=True)[:500]
-                link = ""
-                el = post.select_one("a[data-click-id='title'], a[class*='title']")
-                if el:
-                    href = el.get("href", "")
-                    if href.startswith("/"):
-                        href = "https://reddit.com" + href
-                    link = href
-                items.append({
-                    "id": f"reddit_html_{hash(title)}",
-                    "title": title[:200],
-                    "content": f"{title}\n\n{body}" if body else title,
-                    "url": link,
-                    "author": None,
-                    "created_utc": None,
-                    "created_at": datetime.now().isoformat(),
-                    "raw_json": None,
-                    "item_type": "reddit_post",
-                    "source_name": f"r/{self.subreddit}",
-                    "source_type": "reddit",
-                })
-        except Exception:
-            pass
-        return items
-
-    def fetch(self, limit=25):
-        items = []
-        seen = set()
-
-        # Query única optimizada: busca en new + relevance, no los 3 sorts
-        q = self.query or "courier paraguay"
-
-        for sort in ("relevance", "new"):
-            url = f"https://www.reddit.com/r/{self.subreddit}/search.json?q={q}&restrict_sr=1&sort={sort}&limit={limit}"
-            fetched = self._fetch_json(url, limit)
-            for it in fetched:
-                if it["id"] not in seen:
-                    seen.add(it["id"])
-                    items.append(it)
-            if len(items) >= 5:
-                break
-
-        # Fallback: front page si no hay resultados
-        if len(items) < 3:
-            url = f"https://www.reddit.com/r/{self.subreddit}.json?limit={limit}"
-            fetched = self._fetch_json(url, limit)
-            for it in fetched:
-                if it["id"] not in seen:
-                    seen.add(it["id"])
-                    items.append(it)
-
-        # Fallback BS HTML
-        if len(items) < 3:
-            url = f"https://www.reddit.com/r/{self.subreddit}/search?q={q}&sort=new"
-            fetched = self._scrape_html(url, limit)
-            for it in fetched:
-                if it["id"] not in seen:
-                    seen.add(it["id"])
-                    items.append(it)
-
-        return items[:limit * 2]
+        return items[:limit]
