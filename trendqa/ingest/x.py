@@ -1,167 +1,100 @@
-import re
 import requests
-from datetime import datetime, timedelta
-from bs4 import BeautifulSoup
+import time
+import hashlib
+import json
+from pathlib import Path
+from datetime import datetime
 
+# Configuración de caché en disco
+CACHE_DIR = Path("/tmp/x_cache")
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+CACHE_TTL = 1800  # 30 minutos
 
-NITTER_INSTANCES = [
-    "https://nitter.net",
-    "https://nitter.poast.org",
-    "https://nitter.1d4.us",
-    "https://nitter.kavin.rocks",
-    "https://nitter.freedit.eu",
-    "https://nitter.lqdv.xyz",
-    "https://nitter.esmaeilpour.xyz",
-    "https://nitter.unixfox.eu",
-    "https://nitter.sethforprivacy.com",
-    "https://nitter.catsarchy.xyz",
-]
+def _cached_get(url, headers, timeout=10):
+    """GET con caché en disco."""
+    cache_key = hashlib.md5(f"x:{url}".encode()).hexdigest()
+    cache_file = CACHE_DIR / f"{cache_key}.json"
+    
+    if cache_file.exists():
+        try:
+            data = json.loads(cache_file.read_text())
+            if time.time() - data["ts"] < CACHE_TTL:
+                return data["content"], True
+        except:
+            cache_file.unlink(missing_ok=True)
+            
+    try:
+        r = requests.get(url, headers=headers, timeout=timeout)
+        if r.status_code == 200:
+            cache_file.write_text(json.dumps({"ts": time.time(), "content": r.text[:50000]}))
+            return r.text[:50000], False
+    except:
+        pass
+    return None, False
 
 
 class XIngestor:
-    def __init__(self, query="courier paraguay", days=90):
-        self.limit_date = datetime.now() - timedelta(days=days)
-        self.query = query
+    def __init__(self, query=None, **kwargs):
+        self.query = query or ""
         self.headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/125.0.0.0 Safari/537.36"
-            ),
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "es-419,es;q=0.9,en;q=0.7",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept-Language": "es-419,es;q=0.9",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         }
 
-    def fetch(self, max_results=30):
-        for instance in NITTER_INSTANCES:
-            try:
-                items = self._scrape_instance(instance, max_results)
-                if items:
-                    return items
-            except Exception:
-                continue
-        return []
-
-    def _scrape_instance(self, instance, max_results):
-        url = f"{instance}/search?q={requests.utils.quote(self.query)}&f=tweets"
-        r = requests.get(url, headers=self.headers, timeout=20)
-        if r.status_code != 200:
+    def fetch(self, **kwargs):  # ✅ Firma flexible
+        """Obtiene posts de X con caché, timeout y límites estrictos."""
+        limit = kwargs.get("limit", kwargs.get("max_results", 5))
+        
+        if not self.query:
             return []
-        soup = BeautifulSoup(r.text, "html.parser")
+
         items = []
-        seen = set()
+        now = datetime.now()
+        
+        # Usa Nitter público o endpoint de búsqueda compatible (ajusta si tu versión usa API privada)
+        url = f"https://nitter.net/search?f=tweets&q={requests.utils.quote(self.query)}&l"
+        
+        html, _ = _cached_get(url, self.headers, timeout=10)
+        if not html:
+            return items
 
-        tweet_blocks = (
-            soup.find_all("div", class_="timeline-item")
-            or soup.select("div[class*='tweet']")
-            or soup.select("div[class*='timeline'] > div")
-            or soup.find_all("div", class_=re.compile(r"tweet|timeline|status"))
-            or soup.find_all("article")
-            or [soup]
-        )
+        try:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(html, "html.parser")
+            tweets = soup.select("div.tweet-body")[:limit + 3]
+            
+            for t in tweets:
+                if len(items) >= limit:
+                    break
+                    
+                link_el = t.select_one("a.tweet-link")
+                text_el = t.select_one("div.tweet-content")
+                time_el = t.select_one("span.tweet-date")
+                author_el = t.select_one("a.username")
+                
+                if not text_el:
+                    continue
+                    
+                text = text_el.get_text(strip=True).replace("\n", " ")
+                link = f"https://x.com{link_el['href']}" if link_el else ""
+                author = author_el.text.strip().replace("@", "") if author_el else "unknown"
+                timestamp = time_el["title"] if time_el else now.isoformat()
+                
+                items.append({
+                    "id": f"x_{hashlib.md5(text.encode()).hexdigest()[:10]}",
+                    "title": text[:150],
+                    "content": text[:300],
+                    "url": link,
+                    "author": author,
+                    "created_utc": now.timestamp(),
+                    "created_at": timestamp,
+                    "raw_json": None,
+                    "item_type": "x_post",
+                    "source_name": "X (Twitter)",
+                    "source_type": "x",
+                })
+        except Exception:
+            pass
 
-        for tweet in tweet_blocks:
-            if len(items) >= max_results:
-                break
-
-            text = ""
-            for sel in (
-                ".tweet-content",
-                "div[class*='content'] p",
-                "p",
-                "div[class*='text']",
-                "span[class*='text']",
-                "div[class*='message']",
-                "div[class*='body']",
-            ):
-                el = tweet.select_one(sel)
-                if el:
-                    text = el.get_text(strip=True)
-                    if len(text) > 10:
-                        break
-
-            if not text or len(text) < 5:
-                continue
-            if text in seen:
-                continue
-            seen.add(text)
-
-            tid = tweet.get("id", "") or str(hash(text))
-
-            author = ""
-            for sel in (
-                ".username",
-                "a[href*='/']",
-                "span[class*='name']",
-                "div[class*='author']",
-                "a[class*='user']",
-            ):
-                el = tweet.select_one(sel)
-                if el:
-                    candidate = el.get_text(strip=True).lstrip("@")
-                    if candidate and len(candidate) < 50 and not candidate.startswith("http"):
-                        author = candidate
-                        break
-
-            tweet_url = ""
-            for sel in (
-                "a.tweet-link",
-                "a[href*='/status/']",
-                "a[class*='link']",
-                "a[href]",
-            ):
-                el = tweet.select_one(sel)
-                if el:
-                    href = el.get("href", "")
-                    if href and "/status/" in href:
-                        if href.startswith("/"):
-                            href = instance + href
-                        tweet_url = href
-                        break
-
-            created_dt = None
-            created_str = ""
-            for sel in (
-                ".tweet-date a",
-                "time",
-                "span[class*='date']",
-                "a[class*='date']",
-                "span[class*='time']",
-            ):
-                el = tweet.select_one(sel)
-                if el:
-                    created_str = el.get("datetime", "") or el.get("title", "") or el.get_text(strip=True)
-                    if created_str:
-                        break
-
-            if created_str:
-                for fmt in (
-                    "%Y-%m-%dT%H:%M:%S%z",
-                    "%Y-%m-%dT%H:%M:%S",
-                    "%Y-%m-%d %H:%M:%S",
-                    "%Y-%m-%d",
-                ):
-                    try:
-                        cleaned = created_str[:19].replace("T", " ")
-                        created_dt = datetime.strptime(cleaned, fmt)
-                        break
-                    except Exception:
-                        continue
-
-            if created_dt and created_dt < self.limit_date:
-                continue
-
-            items.append({
-                "id": f"x_scrape_{tid}",
-                "title": text[:120],
-                "content": text,
-                "url": tweet_url,
-                "author": author,
-                "created_utc": created_dt.timestamp() if created_dt else None,
-                "created_at": created_str or datetime.now().isoformat(),
-                "raw_json": None,
-                "item_type": "tweet",
-                "source_name": "X (Twitter)",
-                "source_type": "x",
-            })
-        return items
+        return items[:limit]
