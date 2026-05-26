@@ -4,6 +4,9 @@ from pathlib import Path
 import requests
 from bs4 import BeautifulSoup
 
+
+
+
 CACHE_DIR = Path("/tmp/news_cache")
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_TTL = 1800
@@ -47,12 +50,20 @@ def _cached_get_news(url, headers, timeout=15):
         return html, False
     except: return None, False
 
-# ✅ Mapeo multi-país para Google News
+# ✅ Mapeo multi-país para Google News (este SÍ se usa en fetch())
 _COUNTRY_NEWS_MAP = {
     "paraguay": ("PY", "PY:es-419"),
     "argentina": ("AR", "AR:es-419"),
     "mexico": ("MX", "MX:es-419"),
+    # ↓ Agrega aquí los nuevos países ↓
+    "colombia": ("CO", "CO:es-419"),
+    "chile": ("CL", "CL:es-419"),
+    "peru": ("PE", "PE:es-419"),
+    "brasil": ("BR", "BR:pt-419"),  # ← Nota: Brasil usa portugués
+    "españa": ("ES", "ES:es-ES"),    # ← Nota: España usa es-ES, no es-419
+    "estados unidos": ("US", "US:en-US"),
 }
+
 
 class GoogleNewsIngestor:
     def __init__(self, query=None, days=90, pais="paraguay"):
