@@ -572,17 +572,34 @@ def index():
     return render_template("landing.html")
 
 @dashboard_bp.route("/dashboard")
-@cached(ttl=900, key_prefix="dashboard")
 def dashboard():
+    start = time.time()
     q = request.args.get("q", "logistica_envios")
     pais = request.args.get("pais", "paraguay").lower()
+    
     if pais not in VALID_COUNTRIES:
         return render_template("dashboard.html", summary={"error": True, "message": f"País '{pais}' no soportado aún."})
+    
+    # ✅ Clave compuesta: distingue categoría + país
+    cache_key = f"dashboard:{q}:{pais}"
+    
+    # ✅ Intentar leer de caché
+    from trendqa.cache import cache as cache_backend
+    cached_result = cache_backend.get(cache_key)
+    if cached_result:
+        logger.info(f"✅ CACHE HIT | {cache_key} | ⏱️ {(time.time()-start):.3f}s")
+        return render_template("dashboard.html", summary=cached_result)
+    
+    # ✅ Cache miss: ejecutar pipeline
     try:
         summary = run_pipeline(q, pais=pais)
+        cache_backend.set(cache_key, summary, timeout=900)  # ✅ SOLO se cachea si funciona
+        logger.info(f"✅ PIPELINE + CACHE SET | {cache_key} | ⏱️ {time.time()-start:.2f}s")
         return render_template("dashboard.html", summary=summary)
     except Exception as e:
-        logger.error(f"❌ Pipeline falló para {q} ({pais}): {e}", exc_info=True)
+        logger.error(f"❌ Pipeline falló | {q} | {pais} | {e} | ⏱️ {time.time()-start:.2f}s", exc_info=True)
+        
+        # ❌ FALLBACK: NO se guarda en caché. El próximo request reintentará automáticamente.
         fallback = {
             "error": True, "message": "Error temporal al procesar datos.",
             "period": "últimos 90 días", "topic": q, "total_questions": 0, "pais": pais,
@@ -595,7 +612,7 @@ def dashboard():
             "has_critical_signal": False, "value_completeness": 0,
             "value_insight": {"cause_summary": ""},
             "api_enabled": False, "api_calls_used": 0, "api_limit": 1000,
-            "alerts": []  # ✅ Evita UndefinedError en fallback
+            "alerts": []
         }
         return render_template("dashboard.html", summary=fallback), 200
 
