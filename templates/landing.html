@@ -9,10 +9,8 @@
   <link rel="stylesheet" href="https://sikuri.lat/css/landing.css">
   <style>
     .hero-section {
-      background: linear-gradient(135deg, rgba(15,23,42,0.85), rgba(30,41,59,0.05)), url('https://sikuri.lat/static/images/hero_trendqa.jpg') center center / cover no-repeat;
+      background: linear-gradient(135deg, rgba(15,23,42,0.85), rgba(30,41,59,0.05)), url('{{ url_for("static", filename="images/hero_trendqa.jpg") }}') center center / cover no-repeat;
     }
-    select:invalid { color: #64748b; }
-    select:focus:invalid { border-color: #f97316; }
   </style>
 </head>
 <body>
@@ -20,7 +18,7 @@
   <nav class="navbar">
     <div class="nav-container">
       <div style="display:flex;align-items:center;gap:0.75rem;">
-        <img src="https://sikuri.lat/static/images/logo-sikuri.png" alt="SIKURI" class="brand-logo" onerror="this.style.display='none'">
+        <img src="{{ url_for('static', filename='images/logo-sikuri.png') }}" alt="SIKURI" class="brand-logo" onerror="this.style.display='none'">
         <span class="brand-name">SIKURI</span>
       </div>
       <div class="nav-links">
@@ -36,11 +34,9 @@
         <span style="color:#0496FF;font-size:0.75rem;letter-spacing:3px;text-transform:uppercase; font-weight:bold; ">Trend Intelligence</span>
         <h1 style="font-weight: bold">TrendQA<br><span style="font-size:1.5rem;color:#CBD2D0;letter-spacing:0;">Analizador de <span style="border-bottom:3px solid #0496FF;">tendencias</span> e-commerce</span></h1>
         <p>Monitoreo automatizado de Reddit, Google Trends, medios y reviews para detectar señales de demanda, riesgo de fuga y oportunidades de mercado en Paraguay.</p>
-        
-        <form action="/dashboard" method="GET" style="display:flex;gap:0.75rem;margin-top:2rem;flex-wrap:wrap;" onsubmit="return validateForm()">
-          <select name="q" required
+        <form action="/dashboard" method="GET" style="display:flex;gap:0.75rem;margin-top:2rem;flex-wrap:wrap;">
+            <select name="q"
             style="flex:1;min-width:220px;padding:12px 16px;border:1px solid #334155;border-radius:0px;background:#0f172a;color:#e2e8f0;font-size:0.95rem;cursor:pointer;">
-            <option value="" disabled selected>Selecciona una categoría</option>
             <option value="logistica_envios">Logística y envíos</option>
             <option value="pagos_financiacion">Pagos y financiación</option>
             <option value="experiencia_compra">Experiencia de compra</option>
@@ -49,19 +45,16 @@
             <option value="marketing_descubrimiento">Marketing y descubrimiento</option>
             <option value="marcas_proveedores">Marcas y proveedores</option>
           </select>
-          
-          <select name="pais" required
+          <select name="pais"
             style="flex:0 0 160px;padding:12px 16px;border:1px solid #334155;border-radius:0px;background:#0f172a;color:#e2e8f0;font-size:0.95rem;cursor:pointer;">
-            <option value="" disabled selected>Selecciona un país</option>
             <option value="paraguay">Paraguay</option>
             <option value="argentina">Argentina</option>
-            <option value="mexico">México</option>
             <option value="brasil" disabled>Brasil (próximamente)</option>
             <option value="colombia" disabled>Colombia (próximamente)</option>
+            <option value="mexico">México</option>
             <option value="latam" disabled>LATAM (próximamente)</option>
             <option value="global" disabled>Global (próximamente)</option>
           </select>
-          
           <button type="submit" class="btn" style="white-space:nowrap;">Generar Dashboard</button>
         </form>
       </div>
@@ -107,18 +100,6 @@
       &copy; 2026 SIKURI. Todos los derechos reservados.
     </div>
   </footer>
-
-  <script>
-    function validateForm() {
-      const q = document.querySelector('select[name="q"]').value;
-      const pais = document.querySelector('select[name="pais"]').value;
-      if (!q || !pais) {
-        alert('Por favor selecciona una categoría y un país para continuar.');
-        return false;
-      }
-      return true;
-    }
-  </script>
 
 </body>
 </html>
