@@ -28,6 +28,7 @@ _ML_SITE_MAP = {
     "mexico": "MLM",
     "paraguay": "MLU",
     "uruguay": "MLU",
+    "colombia": "MCO",
 }
 
 class MercadoLibreIngestor:
