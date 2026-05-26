@@ -1,107 +1,135 @@
-import re
-import requests
+import re, os, json, hashlib, time
 from datetime import datetime
+from pathlib import Path
+import requests
 from bs4 import BeautifulSoup
+
+# Configuración de caché
+CACHE_DIR = Path("/tmp/faq_cache")
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+CACHE_TTL = 3600  # 1 hora
+MAX_RESPONSE_SIZE = 100_000  # 100KB límite
+
+def _cached_get(url, headers, timeout=10):
+    """GET con caché en disco."""
+    cache_key = hashlib.md5(f"faq:{url}".encode()).hexdigest()
+    cache_file = CACHE_DIR / f"{cache_key}.json"
+    
+    if cache_file.exists():
+        try:
+            data = json.loads(cache_file.read_text())
+            if time.time() - data["ts"] < CACHE_TTL:
+                return data["content"], True
+        except:
+            cache_file.unlink(missing_ok=True)
+    
+    try:
+        r = requests.get(url, headers=headers, timeout=timeout)
+        if r.status_code == 200:
+            content = r.text[:MAX_RESPONSE_SIZE]
+            cache_file.write_text(json.dumps({"ts": time.time(), "content": content}))
+            return content, False
+    except:
+        pass
+    return None, False
 
 
 class FAQIngestor:
-    def __init__(self, query=None):
-        self.query_words = [w for w in (query.lower().split() if query else []) if len(w) > 2 and w != "paraguay"]
+    def __init__(self, query=None, **kwargs):
         self.query = query or ""
+        # Filtrar palabras clave relevantes
+        self.query_words = [
+            w for w in (query.lower().split() if query else [])
+            if len(w) > 3 and w not in {"paraguay", "para", "que", "como", "cuanto", "cual"}
+        ]
+        self.query_pattern = re.compile(
+            r'|'.join(re.escape(w) for w in self.query_words), re.I
+        ) if self.query_words else None
+        
         self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0.0.0",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept-Language": "es-419,es;q=0.9",
         }
-        self.items = [
-            {"question": "¿Cuál es el mejor courier para Paraguay?", "answer": "Depende del costo, tiempo y soporte. Conviene comparar reseñas y tiempos de entrega."},
-            {"question": "¿Cuánto tarda un envío internacional?", "answer": "Varía según origen, courier y aduana. Puede ir de pocos días a varias semanas."},
-            {"question": "¿Qué es vía Miami?", "answer": "Es una modalidad logística para consolidar compras en EE. UU. antes de enviarlas a Paraguay."},
-            {"question": "¿Cómo rastrear un pedido?", "answer": "Usando el código de seguimiento del courier en su sitio web. Algunos también notifican por WhatsApp."},
-            {"question": "¿Hay impuestos de importación?", "answer": "Sí, la aduana paraguaya aplica aranceles según el tipo de producto y valor. Los courriers suelen gestionarlo."},
-            {"question": "¿Cuál es la franquicia para compras internacionales?", "answer": "Actualmente hasta USD 500 sin tributos para particulares, vía courier. Cantidad limitada al año."},
-            {"question": "¿Conviene comprar en Amazon o mejor en tiendas locales?", "answer": "Depende del tipo de producto, precio final con envío e impuestos, y urgencia de entrega."},
-            {"question": "¿Bancard, cuál es la mejor tarjeta para compras online?", "answer": "Depende de promociones, cuotas sin interés y beneficios. Las Visa y Mastercard internacionales son las más aceptadas."},
-            {"question": "¿Cómo evitar estafas en compras online?", "answer": "Verificar reputación del vendedor, usar medios de pago seguros, revisar políticas de devolución."},
-            {"question": "¿Facebook Marketplace Paraguay es seguro?", "answer": "Depende del vendedor. Preferir entrega personal y verificar antes de pagar. Usar transferencia solo con referencias."},
+        
+        # FAQs hardcoded optimizadas
+        self._base_faqs = [
+            {"q": "¿Cuál es el mejor courier para Paraguay?", "a": "Depende del costo, tiempo y soporte. Conviene comparar reseñas y tiempos de entrega."},
+            {"q": "¿Cuánto tarda un envío internacional?", "a": "Varía según origen, courier y aduana. Puede ir de pocos días a varias semanas."},
+            {"q": "¿Qué es vía Miami?", "a": "Es una modalidad logística para consolidar compras en EE. UU. antes de enviarlas a Paraguay."},
+            {"q": "¿Cómo rastrear un pedido?", "a": "Usando el código de seguimiento del courier en su sitio web."},
+            {"q": "¿Hay impuestos de importación?", "a": "Sí, la aduana paraguaya aplica aranceles según el tipo de producto y valor."},
+            {"q": "¿Cuál es la franquicia para compras internacionales?", "a": "Actualmente hasta USD 500 sin tributos para particulares, vía courier."},
+            {"q": "¿Cómo evitar estafas en compras online?", "a": "Verificar reputación del vendedor, usar medios de pago seguros, revisar políticas de devolución."},
         ]
 
-    def _scrape_external_faq(self, url):
-        """Fallback: buscar FAQs en sitios de referencia."""
-        out = []
-        try:
-            r = requests.get(url, headers=self.headers, timeout=15)
-            if r.status_code != 200:
-                return out
-            soup = BeautifulSoup(r.text, "html.parser")
-            faq_blocks = (
-                soup.select("div[class*='faq']")
-                or soup.select("div[class*='accordion']")
-                or soup.select("div[class*='question']")
-                or soup.select("details")
-                or soup.select("div[class*='answer']")
-                or []
-            )
-            for block in faq_blocks[:10]:
-                q_el = block.select_one("h3, h4, strong, div[class*='question'], summary")
-                a_el = block.select_one("p, div[class*='answer'], div[class*='content']")
-                if q_el and a_el:
-                    q_text = q_el.get_text(strip=True)
-                    a_text = a_el.get_text(strip=True)
-                    if q_text and a_text and len(q_text) > 10 and len(a_text) > 10:
-                        if self.query_words:
-                            haystack = f"{q_text.lower()} {a_text.lower()}"
-                            if not any(w in haystack for w in self.query_words):
-                                continue
-                        out.append({
-                            "id": f"faq_scrape_{hash(q_text)}",
-                            "title": q_text[:200],
-                            "content": a_text,
-                            "url": url,
-                            "author": None,
-                            "created_utc": datetime.now().timestamp(),
-                            "created_at": datetime.now().isoformat(),
-                            "raw_json": None,
-                            "item_type": "faq_item",
-                            "source_name": "FAQ Externa (scrape)",
-                            "source_type": "faq",
-                        })
-        except Exception:
-            pass
-        return out
+    def _matches_query(self, text):
+        if not self.query_pattern:
+            return True
+        return bool(self.query_pattern.search(text))
 
-    def fetch(self):
+    def fetch(self, **kwargs):  # ✅ Firma flexible: acepta cualquier kwarg
+        """Obtiene FAQs con caché y límites estrictos."""
+        # Extraer parámetros opcionales (sin romper si no existen)
+        limit = kwargs.get("limit", kwargs.get("max_results", 5))
+        
         now = datetime.now()
-        out = []
+        now_ts = now.timestamp()
+        now_iso = now.isoformat()
+        items = []
 
-        # Estrategia 1: FAQ hardcoded
-        for i, item in enumerate(self.items):
-            if self.query_words and not any(w in item["question"].lower() or w in item["answer"].lower() for w in self.query_words):
-                continue
-            out.append({
-                "id": f"faq_{i}",
-                "title": item["question"],
-                "content": item["answer"],
-                "url": None,
-                "author": None,
-                "created_utc": now.timestamp(),
-                "created_at": now.isoformat(),
-                "raw_json": None,
-                "item_type": "faq_item",
-                "source_name": "FAQ Interna",
-                "source_type": "faq",
-            })
+        # 1. FAQs hardcoded (instantáneo)
+        for i, item in enumerate(self._base_faqs):
+            if len(items) >= limit:
+                break
+            if self._matches_query(f"{item['q']} {item['a']}"):
+                items.append({
+                    "id": f"faq_hard_{i}",
+                    "title": item["q"],
+                    "content": item["a"],
+                    "url": None,
+                    "author": None,
+                    "created_utc": now_ts,
+                    "created_at": now_iso,
+                    "raw_json": None,
+                    "item_type": "faq_item",
+                    "source_name": "FAQ Interna",
+                    "source_type": "faq",
+                })
 
-        # Estrategia 2: Scrape FAQs externas
-        if not out:
+        # 2. Scraping externo SOLO si faltan resultados y hay query
+        if len(items) < limit and self.query_words:
             faq_sites = [
                 "https://www.aduana.gov.py/faq",
-                "https://www.bancard.com.py/faq",
-                f"https://www.google.com/search?q=FAQ+{'courier' if not self.query else self.query}+paraguay",
+                "https://www.bancard.com.py/ayuda",
             ]
             for url in faq_sites:
-                scraped = self._scrape_external_faq(url)
-                out.extend(scraped)
-                if out:
+                if len(items) >= limit:
                     break
+                html, _ = _cached_get(url, self.headers, timeout=8)
+                if html:
+                    soup = BeautifulSoup(html, "html.parser")
+                    blocks = soup.select("details, [class*='faq'], [class*='question']")[:3]
+                    for block in blocks:
+                        if len(items) >= limit:
+                            break
+                        q_el = block.select_one("summary, h3, strong")
+                        a_el = block.select_one("p, [class*='answer']")
+                        if q_el and a_el:
+                            q_text = q_el.get_text(strip=True)[:200]
+                            a_text = a_el.get_text(strip=True)[:300]
+                            if q_text and a_text and self._matches_query(f"{q_text} {a_text}"):
+                                items.append({
+                                    "id": f"faq_scrape_{hashlib.md5(q_text.encode()).hexdigest()[:10]}",
+                                    "title": q_text,
+                                    "content": a_text,
+                                    "url": url,
+                                    "author": None,
+                                    "created_utc": now_ts,
+                                    "created_at": now_iso,
+                                    "raw_json": None,
+                                    "item_type": "faq_item",
+                                    "source_name": "FAQ Externa",
+                                    "source_type": "faq",
+                                })
 
-        return out
+        return items[:limit]  # ✅ Garantizar límite
