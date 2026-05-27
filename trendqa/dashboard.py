@@ -12,6 +12,7 @@ from threading import Lock
 from dotenv import load_dotenv
 from flask import Blueprint, render_template, request, current_app
 from trendqa.db import Database
+from flask import make_response
 
 # Ingestores
 from trendqa.ingest.reddit import RedditIngestor
@@ -587,47 +588,32 @@ def _cache_set(key, val, ttl=900):
 
 @dashboard_bp.route("/dashboard")
 def dashboard():
-    start = time.time()
     q = request.args.get("q", "logistica_envios")
     pais = request.args.get("pais", "paraguay").lower()
-    
     if pais not in VALID_COUNTRIES:
         return render_template("dashboard.html", summary={"error": True, "message": f"País '{pais}' no soportado aún."})
-    
-    # ✅ Clave compuesta: distingue categoría + país (FIX #1)
-    cache_key = f"dashboard:{q}:{pais}"
-    
-    # ✅ Intentar leer de caché interno (FIX #2: reemplaza import roto)
-    cached_result = _cache_get(cache_key)
-    if cached_result:
-        logger.info(f"✅ CACHE HIT | {cache_key} | ⏱️ {(time.time()-start):.3f}s")
-        return render_template("dashboard.html", summary=cached_result)
-    
-    # ✅ Cache miss: ejecutar pipeline
+
+    key = f"dashboard:{q}:{pais}"
+    cached = _cache_get(key)
+    if cached:
+        return render_template("dashboard.html", summary=cached)
+
     try:
         summary = run_pipeline(q, pais=pais)
-        _cache_set(cache_key, summary, ttl=900)  # ✅ SOLO se cachea si funciona
-        logger.info(f"✅ PIPELINE + CACHE SET | {cache_key} | ⏱️ {time.time()-start:.2f}s")
+        _cache_set(key, summary, ttl=900)
         return render_template("dashboard.html", summary=summary)
     except Exception as e:
-        logger.error(f"❌ Pipeline falló para {q} ({pais}): {e}", exc_info=True)
-        
-        # ❌ FALLBACK: NO se guarda en caché. El próximo request reintentará automáticamente.
-        fallback = {
-            "error": True, "message": "Error temporal al procesar datos.",
-            "period": "últimos 90 días", "topic": q, "total_questions": 0, "pais": pais,
-            "grouped_questions": {}, "categories": {}, "sources": {},
-            "top_keywords": [], "top_items": [], "top_questions": [],
+        logger.error(f"Pipeline falló para {q} ({pais}): {e}", exc_info=True)
+        empty = {"topic": q, "pais": pais, "error": True, "message": "Error temporal.",
+            "total_questions": 0, "categories": {}, "sources": {}, "top_keywords": [],
+            "top_items": [], "top_questions": [], "grouped_questions": {},
             "churn_questions": [], "anexo_fuentes": [], "oportunidades": [],
             "rising_questions": [], "cross_items": [], "top_brands": [],
             "top_source": "Sin datos", "top_category": "Sin datos",
-            "exec": {"que_cambio": "Servicio temporalmente no disponible.", "por_que_importa": "", "que_haria_hoy": ""},
-            "has_critical_signal": False, "value_completeness": 0,
-            "value_insight": {"cause_summary": ""},
-            "api_enabled": False, "api_calls_used": 0, "api_limit": 1000,
-            "alerts": []  # ✅ FIX #3: eliminada clave duplicada
-        }
-        return render_template("dashboard.html", summary=fallback), 200
+            "exec": {"que_cambio": "Servicio no disponible.", "por_que_importa": "", "que_haria_hoy": ""},
+            "has_critical_signal": False, "value_completeness": 0, "value_insight": {"cause_summary": ""},
+            "api_enabled": False, "api_calls_used": 0, "api_limit": 1000, "alerts": []}
+        return render_template("dashboard.html", summary=empty), 200
 
 from flask import redirect, request
 
