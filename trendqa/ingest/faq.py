@@ -37,10 +37,11 @@ def _cached_get(url, headers, timeout=10):
 class FAQIngestor:
     def __init__(self, query=None, **kwargs):
         self.query = query or ""
+        self.pais = kwargs.get("pais", "paraguay").lower()
         # Filtrar palabras clave relevantes
         self.query_words = [
             w for w in (query.lower().split() if query else [])
-            if len(w) > 3 and w not in {"paraguay", "para", "que", "como", "cuanto", "cual"}
+            if len(w) > 3 and w not in {self.pais, "para", "que", "como", "cuanto", "cual"}
         ]
         self.query_pattern = re.compile(
             r'|'.join(re.escape(w) for w in self.query_words), re.I
