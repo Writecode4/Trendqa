@@ -101,8 +101,8 @@ def collect_items_parallel(q, pais="paraguay", max_workers=4):
                 if res: items.extend(res)
             except Exception as e:
                 logger.warning(f"Error en hilo de fuentes: {e}")
-    items.extend(_fetch_safe("FAQ", FAQIngestor, q, limit=3, timeout=5, pais=pais))
-    items.extend(_fetch_safe("Reviews", ReviewsIngestor, q, limit=3, timeout=5, pais=pais))
+    items.extend(_fetch_safe("FAQ", FAQIngestor, t, limit=3, timeout=5, pais=pais))
+    items.extend(_fetch_safe("Reviews", ReviewsIngestor, t, limit=3, timeout=5, pais=pais))
     try:
         trends = GoogleTrendsIngestor().get_trend_bundle(t)
         now = datetime.now().isoformat()
