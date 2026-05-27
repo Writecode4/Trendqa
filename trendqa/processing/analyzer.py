@@ -72,6 +72,10 @@ CATEGORY_KEYWORDS = {
     "marcas_proveedores": ["marca", "proveedor", "empresa", "fabricante", "distribuidor", "tienda", "producto original", "mayorista", "proveeduria"],
 }
 
+CATEGORY_EXCLUDE = {
+    "logistica_envios": ["congreso", "diputados", "senado", "política", "elecciones", "medidas del gobierno", "paquete de medidas", "ley", "presupuesto", "reforma"],
+    "pagos_financiacion": ["política", "gobierno", "elecciones"],
+}
 
 def _categorize_by_keywords(text):
     text_lower = text.lower()
@@ -79,11 +83,13 @@ def _categorize_by_keywords(text):
     for cat, words in CATEGORY_KEYWORDS.items():
         score = sum(2 if w in text_lower else 0 for w in words)
         if score > 0:
+            exclude = CATEGORY_EXCLUDE.get(cat, [])
+            if any(w in text_lower for w in exclude):
+                continue
             scores[cat] = score
     if scores:
         return max(scores, key=scores.get)
     return "otros"
-
 
 class QuestionAnalyzer:
     CATEGORIES = (
