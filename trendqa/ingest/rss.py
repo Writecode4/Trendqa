@@ -73,7 +73,7 @@ class RSSIngestor:
         now = datetime.now()
         
         # Feeds ajustados por país
-        gl, ceid = {"paraguay": ("PY", "PY:es-419"), "argentina": ("AR", "AR:es-419"), "mexico": ("MX", "MX:es-419")}.get(self.pais, ("PY", "PY:es-419"))
+        gl, ceid = {"paraguay": ("PY", "PY:es-419"), "argentina": ("AR", "AR:es-419"), "mexico": ("MX", "MX:es-419"), "colombia": ("CO", "CO:es-419")}.get(self.pais, ("PY", "PY:es-419"))        
         feeds = [
             f"https://news.google.com/rss/search?q={requests.utils.quote(self.query)}&hl=es-419&gl={gl}&ceid={ceid}",
             f"https://www.reddit.com/search.rss?q={requests.utils.quote(self.query)}&restrict_sr=off&sort=new&t=month",
