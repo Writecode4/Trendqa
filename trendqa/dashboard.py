@@ -312,7 +312,7 @@ def build_summary(q, items, questions, db, top_keywords, pais="paraguay", ventan
     kw_text = top_keywords[0]["keyword"] if top_keywords else ""
     pct = int(cat_counter[top_cat] / total * 100) if total else 0
     topic_key = f"{q}_{pais}"
-    trend_text = _calc_category_trend(db, cat_counter, total, topic=topic_key, ventana=ventana)
+    trend_text = _calc_category_trend(db, cat_counter, total, topic=topic_key)
     if trend_text is None: trend_text = "Primera corrida de análisis. Estos datos establecen la línea base para futuras comparaciones." if total else "Sin datos históricos."
     cross_items = _find_cross_source(questions)
     cross_finding = None
