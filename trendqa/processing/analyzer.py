@@ -73,7 +73,7 @@ CATEGORY_KEYWORDS = {
 }
 
 CATEGORY_EXCLUDE = {
-    "logistica_envios": ["congreso", "diputados", "senado", "política", "elecciones", "medidas del gobierno", "paquete de medidas", "ley", "presupuesto", "reforma"],
+    "logistica_envios": ["congreso", "diputados", "senado", "política", "elecciones", "medidas del gobierno", "paquete de medidas", "ley", "presupuesto", "reforma", "precursores", "narcoticos", "narcóticos", "narcodiputados", "narcodiputado"],
     "pagos_financiacion": ["política", "gobierno", "elecciones"],
 }
 
