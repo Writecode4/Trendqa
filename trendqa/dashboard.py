@@ -303,7 +303,7 @@ def _rank_opportunities(questions, cat_counter, total, cross_items, trend_text):
     ranking.sort(key=lambda x: x["score"], reverse=True)
     return ranking
 
-def build_summary(q, items, questions, db, top_keywords, pais="paraguay"):
+def build_summary(q, items, questions, db, top_keywords, pais="paraguay", ventana=90):
     total = len(questions)
     cat_counter = Counter(q_item["category"] for q_item in questions)
     src_counter = Counter(q_item["source_type"] for q_item in questions)
@@ -312,7 +312,7 @@ def build_summary(q, items, questions, db, top_keywords, pais="paraguay"):
     kw_text = top_keywords[0]["keyword"] if top_keywords else ""
     pct = int(cat_counter[top_cat] / total * 100) if total else 0
     topic_key = f"{q}_{pais}"
-    trend_text = _calc_category_trend(db, cat_counter, total, topic=topic_key)
+    trend_text = _calc_category_trend(db, cat_counter, total, topic=topic_key, ventana=ventana)
     if trend_text is None: trend_text = "Primera corrida de análisis. Estos datos establecen la línea base para futuras comparaciones." if total else "Sin datos históricos."
     cross_items = _find_cross_source(questions)
     cross_finding = None
@@ -346,7 +346,7 @@ def build_summary(q, items, questions, db, top_keywords, pais="paraguay"):
         nombre = f"Reddit r/{c.title()}" if src == "reddit" else f"MercadoLibre ({c.upper()})" if src == "mercadolibre" else f"Google Trends ({c.title()})" if src == "trends" else f"X/Twitter ({c.title()})" if src == "x" else src.title()
         anexo_fuentes.append({"clave": src, "nombre": nombre, "señales": count, "confiabilidad": SOURCE_RELIABILITY.get(src, "Media"), "preguntas": sorted(src_items, key=lambda x: x["confidence"], reverse=True)[:10]})
     return {
-        "period": "últimos 90 días", "topic": q, "pais": pais, "total_questions": total, "top_source": top_src, "top_category": top_cat,
+        "period": "últimos 7 días", "topic": q, "pais": pais, "total_questions": total, "top_source": top_src, "top_category": top_cat,
         "categories": dict(cat_counter), "sources": dict(src_counter), "top_keywords": top_keywords, "top_items": sorted(questions, key=lambda x: x["confidence"], reverse=True)[:15],
         "top_questions": sorted(questions, key=lambda x: x["confidence"], reverse=True)[:15], "grouped_questions": grouped,
         "churn_questions": sorted(churn_questions, key=lambda x: x["churn"]["riesgo"], reverse=True)[:10], "anexo_fuentes": anexo_fuentes,
