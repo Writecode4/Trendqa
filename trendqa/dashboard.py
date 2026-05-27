@@ -472,6 +472,10 @@ def _calc_trend_velocity(question, topic_key, db):
     """Calcula velocidad real de cambio: reciente vs histórico."""
     try:
         recent, older = db.get_question_trends(topic=topic_key, recent_days=3)  # Ventana ultra-corta para <72h
+        if not recent or sum(recent.values()) == 0:
+            recent, older = db.get_question_trends(topic=topic_key, recent_days=5)
+        if not recent or sum(recent.values()) == 0:
+            recent, older = db.get_question_trends(topic=topic_key, recent_days=7)
         recent_total = sum(recent.values()) or 1
         older_total = sum(older.values()) or 1
         q_freq_recent = recent.get(question, 0)
