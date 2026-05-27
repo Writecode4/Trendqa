@@ -36,6 +36,7 @@ def _cached_get(url, headers, timeout=10):
 class ReviewsIngestor:
     def __init__(self, query=None, **kwargs):
         self.query = query or ""
+        self.pais = kwargs.get("pais", "paraguay").lower()
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept-Language": "es-419,es;q=0.9",
@@ -47,7 +48,7 @@ class ReviewsIngestor:
         
         # Reviews internas de ejemplo (reemplaza con tu lógica real si apunta a DB/archivo)
         base_reviews = [
-            {"text": "El envío tardó más de lo esperado, pero el producto llegó bien.", "rating": 3},
+            {"text": f"El envío a {self.pais.title()} tardó más de lo esperado, pero el producto llegó bien.", "rating": 3},
             {"text": "Excelente atención post-venta, resolvieron mi duda en minutos.", "rating": 5},
             {"text": "La página no me dejaba aplicar el cupón de descuento.", "rating": 2},
             {"text": "Buen precio, pero la pasarela de pago falló dos veces.", "rating": 3},
