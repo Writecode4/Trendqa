@@ -140,11 +140,7 @@ def save_to_db(db, items, questions, topic="", pais="paraguay"):
 
 def _calc_category_trend(db, current_cats, total_current, topic=""):
     try:
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT category, COUNT(*) FROM questions WHERE topic = ? GROUP BY category", (topic,))
-        all_time = dict(cursor.fetchall())
-        conn.close()
+        all_time = db.get_category_counts(topic)
     except Exception:
         return None
     if not all_time or total_current == 0: return None
