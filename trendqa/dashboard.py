@@ -31,6 +31,39 @@ from trendqa.processing.analyzer import QuestionAnalyzer, TrendAnalyzer, BrandEx
 BASE = Path(__file__).resolve().parent.parent
 load_dotenv(BASE / ".env")
 
+PATTERNS_FILE = BASE / "exclusion_patterns.json"
+
+def _load_exclusion_patterns():
+    patterns = {"sports": [], "crime": []}
+    if PATTERNS_FILE.exists():
+        try:
+            data = json.loads(PATTERNS_FILE.read_text())
+            patterns.update(data)
+        except Exception:
+            pass
+    return patterns
+
+def _save_exclusion_patterns(patterns):
+    PATTERNS_FILE.write_text(json.dumps(patterns, indent=2, ensure_ascii=False))
+
+def _get_compiled_regex(category, hardcoded):
+    patterns = _load_exclusion_patterns()
+    all_pats = list(hardcoded) + patterns.get(category, [])
+    return re.compile("|".join(all_pats), re.IGNORECASE) if all_pats else None
+
+def _register_pattern(category, pattern):
+    patterns = _load_exclusion_patterns()
+    if pattern not in patterns.get(category, []):
+        patterns.setdefault(category, []).append(pattern)
+        _save_exclusion_patterns(patterns)
+    # rebuild regex
+    if category == "sports":
+        global _SPORTS_CORE
+        _SPORTS_CORE = _get_compiled_regex("sports", _SPORTS_PATTERNS)
+    elif category == "crime":
+        global _CRIME_CORE
+        _CRIME_CORE = _get_compiled_regex("crime", _CRIME_PATTERNS)
+
 dashboard_bp = Blueprint("dashboard", __name__)
 logger = logging.getLogger(__name__)
 
@@ -236,7 +269,7 @@ _SPORTS_PATTERNS = [
     r"\bclaytenis\b",
 ]
 
-_SPORTS_CORE = re.compile("|".join(_SPORTS_PATTERNS), re.IGNORECASE)
+_SPORTS_CORE = _get_compiled_regex("sports", _SPORTS_PATTERNS)
 
 _CRIME_PATTERNS = [
     r"\bhomicidio\b", r"\basesinato\b",
@@ -249,7 +282,7 @@ _CRIME_PATTERNS = [
     r"\bdetienen\b", r"\bdetenid[ao]\b", r"\bdetenci[óo]n\b",
     r"\baccidente\s+(?:de\s+tr[áa]nsito|fatal|a[ée]reo|ferroviario)\b",
 ]
-_CRIME_CORE = re.compile("|".join(_CRIME_PATTERNS), re.IGNORECASE)
+_CRIME_CORE = _get_compiled_regex("crime", _CRIME_PATTERNS)
 
 def _filter_sports(items):
     result = []

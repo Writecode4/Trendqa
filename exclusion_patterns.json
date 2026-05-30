@@ -1,0 +1,6 @@
+{
+  "sports": [],
+  "crime": [
+    "detienen a .* por (vender|transportar|llevar) (droga|drogar|drogas)"
+  ]
+}
