@@ -6,14 +6,49 @@ from bs4 import BeautifulSoup
 from pytrends.request import TrendReq
 
 
+_GEO_MAP = {
+    "paraguay": "PY", "argentina": "AR", "mexico": "MX",
+    "colombia": "CO", "chile": "CL", "peru": "PE",
+    "brasil": "BR", "españa": "ES", "estados unidos": "US",
+}
+
+_GEO_TO_COUNTRY = {v: k for k, v in _GEO_MAP.items()}
+
+_OTHER_COUNTRY_KEYWORDS = [
+    "argentina", "chile", "colombia", "peru", "mexico", "brasil", "uruguay",
+    "bolivia", "ecuador", "venezuela", "españa", "ee.uu.",
+    "paraguay", "ande", "edenor", "edesa", "epr", "cfe", "codensa",
+    "electricaribe", "enel", "luz del sur",
+    "europa", "europe", "europeo", "european", "ue", "union europea",
+    "alemania", "germany", "francia", "france", "italia", "italy",
+    "reino unido", "united kingdom", "uk", "inglaterra", "england",
+    "portugal", "holanda", "netherlands", "belgica", "belgium",
+    "suiza", "switzerland", "suecia", "sweden", "noruega", "norway",
+    "dinamarca", "denmark", "polonia", "poland", "rusia", "russia",
+    "china", "japon", "japan", "india", "asia", "africa",
+    "australia", "canada",
+]
+
+def _filter_trends_by_country(terms, geo):
+    target = _GEO_TO_COUNTRY.get(geo, "").lower()
+    if not target:
+        return terms
+    other_keywords = [kw for kw in _OTHER_COUNTRY_KEYWORDS if kw != target]
+    return [
+        t for t in terms
+        if not any(ok in t.lower() for ok in other_keywords)
+    ]
+
 class GoogleTrendsIngestor:
-    def __init__(self, hl="es-419", tz=-240, geo="PY"):
+    def __init__(self, hl="es-419", tz=-240, geo=None, pais=None):
+        if geo is None and pais:
+            geo = _GEO_MAP.get(pais.lower(), "PY")
+        self.geo = geo or "PY"
         self.pytrends = None
         try:
-            self.pytrends = TrendReq(hl=hl, tz=tz)
+            self.pytrends = TrendReq(hl=hl, tz=tz, geo=self.geo)
         except Exception:
             pass
-        self.geo = geo
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0.0.0",
             "Accept-Language": "es-419,es;q=0.9",
@@ -73,11 +108,13 @@ class GoogleTrendsIngestor:
                 or []
             )
             seen = set()
+            scraped = []
             for block in related_blocks[:15]:
                 text = block.get_text(strip=True)
                 if text and len(text) > 2 and text not in seen:
                     seen.add(text)
-                    result["related_top"].append(text)
+                    scraped.append(text)
+            result["related_top"] = _filter_trends_by_country(scraped, self.geo)
         except Exception:
             pass
 
@@ -104,9 +141,9 @@ class GoogleTrendsIngestor:
                     top_df = related[keyword].get("top")
                     rising_df = related[keyword].get("rising")
                     if top_df is not None and not top_df.empty:
-                        result["related_top"] = top_df["query"].head(10).tolist()
+                        result["related_top"] = _filter_trends_by_country(top_df["query"].head(10).tolist(), self.geo)
                     if rising_df is not None and not rising_df.empty:
-                        result["related_rising"] = rising_df["query"].head(10).tolist()
+                        result["related_rising"] = _filter_trends_by_country(rising_df["query"].head(10).tolist(), self.geo)
                 iot = self.pytrends.interest_over_time()
                 if iot is not None and not iot.empty:
                     cols = [c for c in iot.columns if c != "isPartial"]
