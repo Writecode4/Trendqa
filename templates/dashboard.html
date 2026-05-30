@@ -48,7 +48,7 @@
         <div><h1>TrendQA</h1><p>{{ summary.topic }} · {{ summary.pais | capitalize }}</p></div>
         <div class="actions">
           <!--<a href="https://sikuri.lat/contacto.html?redirect_to={{ url_for('dashboard.download_pdf', _external=True, topic=summary.topic, pais=summary.pais) }}&topic={{ summary.topic }}&pais={{ summary.pais }}" class="btn">Descargar PDF</a>-->
-          <a href="https://sikuri.lat/contacto.html?topic={{ summary.topic }}&pais={{ summary.pais }}" class="btn">Descargar PDF</a>
+          <a href="/dashboard/pdf?topic={{ summary.topic }}&pais={{ summary.pais }}" class="btn">Descargar PDF</a>
         </div>
       </header>
 
