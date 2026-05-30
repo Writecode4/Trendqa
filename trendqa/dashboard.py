@@ -760,6 +760,11 @@ def index():
 _CACHE_STORE = {}
 _CACHE_LOCK = Lock()
 def _cache_get(key):
+    try:
+        val = current_app.cache.get(key)
+        if val is not None: return val
+    except Exception:
+        pass
     with _CACHE_LOCK:
         if key in _CACHE_STORE:
             val, exp = _CACHE_STORE[key]
@@ -767,6 +772,11 @@ def _cache_get(key):
             del _CACHE_STORE[key]
     return None
 def _cache_set(key, val, ttl=3600):
+    try:
+        current_app.cache.set(key, val, timeout=ttl)
+        return
+    except Exception:
+        pass
     with _CACHE_LOCK: _CACHE_STORE[key] = (val, time.time() + ttl)
 
 def get_cached_summary(topic, pais="paraguay"):
