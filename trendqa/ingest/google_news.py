@@ -70,7 +70,7 @@ class GoogleNewsIngestor:
         self.query = query or ""
         self.limit_date = datetime.now() - timedelta(days=days)
         self.pais = pais.lower()
-        self.query_words = [w for w in (query.lower().split() if query else []) if len(w) > 3 and w not in {"paraguay","argentina","mexico","para","que","como","cuanto","cual","sobre"}]
+        self.query_words = [w for w in (query.lower().split() if query else []) if len(w) > 3 and w not in {"paraguay","argentina","mexico","colombia","brasil","para","que","como","cuanto","cual","sobre"}]
         self.query_pattern = re.compile(r'|'.join(re.escape(w) for w in self.query_words), re.I) if self.query_words else None
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0.0.0",
