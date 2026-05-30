@@ -97,6 +97,17 @@ class Database:
                 )
             """)
             self._execute(conn, """
+                CREATE TABLE IF NOT EXISTS contacts (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    nombre_completo VARCHAR(255),
+                    email_corporativo VARCHAR(255),
+                    telefono VARCHAR(50),
+                    industria VARCHAR(255),
+                    mensaje TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            self._execute(conn, """
                 CREATE TABLE IF NOT EXISTS processing_log (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     step TEXT,
@@ -329,6 +340,28 @@ class Database:
                 (topic,),
             )
             return {row["category"]: row["cnt"] for row in cur.fetchall()}
+        finally:
+            conn.close()
+
+    def save_contact(self, nombre_completo, email_corporativo, telefono=None, industria=None, mensaje=None):
+        conn = self._get_conn()
+        try:
+            self._execute(conn, """
+                INSERT INTO contacts (nombre_completo, email_corporativo, telefono, industria, mensaje)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (nombre_completo, email_corporativo, telefono, industria, mensaje))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_contacts(self, limit=50):
+        conn = self._get_conn()
+        try:
+            cur = self._execute(conn,
+                "SELECT * FROM contacts ORDER BY created_at DESC LIMIT %s",
+                (limit,)
+            )
+            return cur.fetchall()
         finally:
             conn.close()
 
