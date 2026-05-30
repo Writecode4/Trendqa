@@ -29,6 +29,7 @@ _ML_SITE_MAP = {
     "paraguay": "MLU",
     "uruguay": "MLU",
     "colombia": "MCO",
+    "brasil": "MLB",
 }
 
 class MercadoLibreIngestor:
