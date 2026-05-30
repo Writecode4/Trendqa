@@ -99,7 +99,7 @@ class QuestionAnalyzer:
     )
 
     def __init__(self, max_items=5, pais=None):
-        if not pais or pais.lower() not in {"paraguay", "argentina", "mexico", "colombia"}:
+        if not pais or pais.lower() not in {"paraguay", "argentina", "mexico", "colombia", "brasil"}:
             raise ValueError(f"QuestionAnalyzer requiere 'pais' válido. Recibido: '{pais}'")
         
         self.max_items = max_items
@@ -228,10 +228,19 @@ BRAND_KEYWORDS = [
     "mercado libre", "mercadolibre", "shopify", "amazon", "ebay", "aliexpress",
     "shein", "wish", "temu", "amway", "herbalife", "natura", "avon",
     "bancard", "visa", "mastercard", "paypal", "cripto", "binance",
-    "personal", "tigo", "claro", "vox", "wom",
+    "personal", "tigo", "claro", "vox", "wom", "movistar", "entel",
     "sodimac", "easy", "stock", "biggie", "superseis",
     "pedidosya", "bigbox", "courier", "dhl", "fedex", "ups",
-    "paraguay", "argentina", "mexico", "instagram", "facebook", "whatsapp", "google",
+    "paraguay", "argentina", "mexico", "colombia", "brasil",
+    "instagram", "facebook", "whatsapp", "google", "apple", "samsung",
+    "xiaomi", "lenovo", "hp", "dell", "asus", "acer", "nike", "adidas", "puma",
+    "reebok", "under armour", "louis vuitton", "gucci", "prada", "zara", "h&m",
+    "falabella", "ripley", "linio", "coppel", "walmart", "costco", "carrefour",
+    "liverpool", "sears", "best buy", "gamestop", "lego", "disney", "netflix",
+    "spotify", "apple music", "hbo", "warner", "universal", "sony", "microsoft",
+    "xbox", "playstation", "nintendo", "tesla", "ford", "chevrolet", "toyota",
+    "volkswagen", "hyundai", "kia", "renault", "peugeot", "fiat", "citroën",
+    "jeep", "subaru", "mazda", "volvo", "mercedes", "bmw", "audi", "lexus",
 ]
 
 def _extract_brands_keyword(text):
@@ -299,8 +308,8 @@ Textos: {text}
         return ["Marca no identificada", "Verificar tendencia"]
 
 
-POSITIVE_WORDS = ["bueno", "excelente", "rápido", "recomiendo", "confiable", "fácil", "seguro", "barato", "eficiente", "calidad"]
-NEGATIVE_WORDS = ["malo", "pésimo", "horrible", "estafa", "robo", "lento", "caro", "no recomiendo", "pérdida", "dañado", "queja"]
+POSITIVE_WORDS = ["bueno", "excelente", "rápido", "recomiendo", "confiable", "fácil", "seguro", "barato", "eficiente", "calidad", "satisfecho", "positivo", "resuelve mi duda", "funciona", "perfecto", "genial", "sorprendente", "vale la pena", "muy bueno", "mejor de lo esperado"]
+NEGATIVE_WORDS = ["malo", "pésimo", "horrible", "estafa", "robo", "lento", "caro", "no recomiendo", "pérdida", "dañado", "queja", "trucho", "falla", "defecto", "decepcionante"]
 
 
 def _analyze_sentiment(text):
