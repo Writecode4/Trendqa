@@ -32,8 +32,17 @@ def create_app():
     tunnel = None
 
     if ENV == 'production':
-        private_key_str = os.getenv('SSH_PRIVATE_KEY')
-        private_key = paramiko.Ed25519Key.from_private_key(io.StringIO(private_key_str))
+        private_key_str = os.getenv('SSH_PRIVATE_KEY').replace('\\n', '\n')
+        key_file = io.StringIO(private_key_str)
+        for KeyClass in (paramiko.Ed25519Key, paramiko.RSAKey, paramiko.ECDSAKey):
+            try:
+                key_file.seek(0)
+                private_key = KeyClass.from_private_key(key_file)
+                break
+            except paramiko.SSHException:
+                continue
+        else:
+            raise paramiko.SSHException("No se pudo cargar la clave SSH privada")
         tunnel = SSHTunnelForwarder(
             (os.getenv('SSH_HOST'), int(os.getenv('SSH_PORT'))),
             ssh_username=os.getenv('SSH_USER'),
