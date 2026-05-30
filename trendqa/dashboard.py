@@ -237,25 +237,14 @@ _SPORTS_PATTERNS = [
 _SPORTS_CORE = re.compile("|".join(_SPORTS_PATTERNS), re.IGNORECASE)
 
 _CRIME_PATTERNS = [
-    r"\bhomicidio\b", r"\basesinato\b", r"\bmuerto\b", r"\bfallecido\b",
-    r"\bpolicial\b", r"\bpolic[ií]a\b", r"\bpolic[ií]aca?\b",
-    r"\bdelincuencia\b", r"\bdelincuente\b", r"\bdelito\b", r"\bdelictivo?\b",
-    r"\brobo\b", r"\brob[oa]r\b", r"\bhurt[oa]\b",
+    r"\bhomicidio\b", r"\basesinato\b",
     r"\bsecuestro\b", r"\bsecuestr[oa]r\b",
-    r"\bviolencia\b", r"\bviolento\b",
     r"\bnarcotr[áa]fico\b", r"\bnarco\b",
-    r"\bbalacera\b", r"\btiroteo\b", r"\bdispar[oa]r\b",
-    r"\bfiscal[ií]a\b", r"\bfiscal\b",
-    r"\bjudicial\b", r"\bjuzgado\b", r"\btribunal\b", r"\bjue[sz]\b",
-    r"\bc[áa]rcel\b", r"\bpres[oi]\b", r"\bprisi[óo]n\b",
-    r"\bconden[ao]\b", r"\bcondena\b",
-    r"\bpenal\b", r"\bpenitenciario\b",
-    r"\bnoticia\s+roja\b", r"\bprensa\s+(?:amarilla|sensacionalista)\b",
+    r"\bbalacera\b", r"\btiroteo\b",
+    r"\bnoticia\s+roja\b",
+    r"\bcrimen\b",
+    r"\bc[áa]rcel\b", r"\bprisi[óo]n\b",
     r"\baccidente\s+(?:de\s+tr[áa]nsito|fatal|a[ée]reo|ferroviario)\b",
-    r"\b(?:choque|colisi[óo]n|vuelco|incendio)\s+(?:vehicular|de\s+auto|de\s+cami[óo]n|de\s+[óo]mnibus)\b",
-    r"\bdetenid[ao]\b", r"\bdetenci[óo]n\b",
-    r"\binvestigaci[óo]n\s+(?:policial|criminal|judicial|penal)\b",
-    r"\bcrimen\b", r"\bcriminal\b",
 ]
 _CRIME_CORE = re.compile("|".join(_CRIME_PATTERNS), re.IGNORECASE)
 
