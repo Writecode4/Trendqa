@@ -4,7 +4,7 @@ from pathlib import Path
 from flask import Blueprint, request, jsonify, render_template, redirect, url_for, send_file
 from trendqa.db import Database
 from trendqa.dashboard import get_cached_summary
-from services.pdf_export import PDFExporter
+from trendqa.services.pdf_export import PDFExporter
 
 
 contact_bp = Blueprint("contact", __name__)
