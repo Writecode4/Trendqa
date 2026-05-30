@@ -1,5 +1,7 @@
 import os
+import io
 import time
+import atexit
 from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask, g, request
@@ -21,6 +23,41 @@ def create_app():
     app.config['CACHE_DIR'] = '/tmp/flask_cache'
     app.config['CACHE_DEFAULT_TIMEOUT'] = 900  # 15 minutos
     app.config['COMPRESS_REGISTER'] = True
+
+    # Túnel SSH para base de datos remota
+    from sshtunnel import SSHTunnelForwarder
+    import paramiko
+
+    ENV = os.getenv('FLASK_ENV', 'development')
+    tunnel = None
+
+    if ENV == 'production':
+        private_key_str = os.getenv('SSH_PRIVATE_KEY')
+        private_key = paramiko.Ed25519Key.from_private_key(io.StringIO(private_key_str))
+        tunnel = SSHTunnelForwarder(
+            (os.getenv('SSH_HOST'), int(os.getenv('SSH_PORT'))),
+            ssh_username=os.getenv('SSH_USER'),
+            ssh_pkey=private_key,
+            remote_bind_address=('127.0.0.1', 3306)
+        )
+        tunnel.start()
+    else:
+        tunnel = SSHTunnelForwarder(
+            (os.getenv('SSH_HOST'), int(os.getenv('SSH_PORT'))),
+            ssh_username=os.getenv('SSH_USER'),
+            ssh_pkey=paramiko.RSAKey.from_private_key_file(os.getenv('SSH_KEY_PATH')),
+            remote_bind_address=('127.0.0.1', 3306)
+        )
+        tunnel.start()
+
+    os.environ['DB_PORT'] = str(tunnel.local_bind_port)
+    app.tunnel = tunnel
+
+    def close_tunnel():
+        if tunnel:
+            tunnel.stop()
+
+    atexit.register(close_tunnel)
 
     # Inicializar extensiones
     cache = Cache(app)
