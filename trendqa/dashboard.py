@@ -206,8 +206,10 @@ def _filter_by_country(items, pais):
             if domain_country == pais:
                 result.append(item)
                 continue
-            if pais not in text.lower():
-                logger.info(f"Filtrado item '{item.get('id','')[:40]}': dominio de {domain_country}, no {pais}")
+            domain_region = _COUNTRY_REGION.get(domain_country, "")
+            target_region = _COUNTRY_REGION.get(pais, "")
+            if domain_region and domain_region != target_region and pais not in text.lower():
+                logger.info(f"Filtrado item '{item.get('id','')[:40]}': dominio de {domain_country} ({domain_region}), no {pais}")
                 continue
         if _is_relevant_for_country(text, pais):
             result.append(item)
@@ -239,11 +241,12 @@ _SPORTS_CORE = re.compile("|".join(_SPORTS_PATTERNS), re.IGNORECASE)
 _CRIME_PATTERNS = [
     r"\bhomicidio\b", r"\basesinato\b",
     r"\bsecuestro\b", r"\bsecuestr[oa]r\b",
-    r"\bnarcotr[áa]fico\b", r"\bnarco\b",
+    r"\bnarcotr[áa]fico\b", r"\bnarco\b", r"\bdrogas\b",
     r"\bbalacera\b", r"\btiroteo\b",
     r"\bnoticia\s+roja\b",
     r"\bcrimen\b",
     r"\bc[áa]rcel\b", r"\bprisi[óo]n\b",
+    r"\bdetienen\b", r"\bdetenid[ao]\b", r"\bdetenci[óo]n\b",
     r"\baccidente\s+(?:de\s+tr[áa]nsito|fatal|a[ée]reo|ferroviario)\b",
 ]
 _CRIME_CORE = re.compile("|".join(_CRIME_PATTERNS), re.IGNORECASE)
