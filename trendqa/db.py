@@ -1,286 +1,346 @@
-import sqlite3
 import os
-from datetime import datetime
+import pymysql
+from pymysql.cursors import DictCursor
+from datetime import datetime, timedelta
+from pathlib import Path
 
 
 class Database:
-    def __init__(self, db_name="trendqa.db"):
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.db_path = os.path.join(base_dir, db_name)
-        self.init_db()
+    def __init__(self, host=None, port=None, user=None, password=None, database=None):
+        self.host = host or os.getenv("DB_HOST", "localhost")
+        self.port = port or int(os.getenv("DB_PORT", 3306))
+        self.user = user or os.getenv("DB_USER", "root")
+        self.password = password or os.getenv("DB_PASSWORD", "")
+        self.database = database or os.getenv("DB_NAME", "trendqa")
+        self._init_tables()
 
-    def get_connection(self):
-        conn = sqlite3.connect(self.db_path)
-        conn.execute("PRAGMA foreign_keys = ON")
+    def _get_conn(self):
+        conn = pymysql.connect(
+            host=self.host,
+            port=self.port,
+            user=self.user,
+            password=self.password,
+            database=self.database,
+            cursorclass=DictCursor,
+            charset="utf8mb4",
+        )
         return conn
 
-    def column_exists(self, conn, table_name, column_name):
-        cursor = conn.cursor()
-        cursor.execute(f"PRAGMA table_info({table_name})")
-        return column_name in [row[1] for row in cursor.fetchall()]
+    def _execute(self, conn, sql, params=None):
+        with conn.cursor() as cur:
+            cur.execute(sql, params or ())
+            return cur
 
-    def init_db(self):
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-
-            cursor.execute("""
+    def _init_tables(self):
+        conn = self._get_conn()
+        try:
+            self._execute(conn, """
                 CREATE TABLE IF NOT EXISTS sources (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL UNIQUE,
-                    source_type TEXT NOT NULL,
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    name VARCHAR(255) UNIQUE,
+                    source_type VARCHAR(100),
                     base_url TEXT,
-                    active INTEGER DEFAULT 1,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    active INT DEFAULT 1,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-
-            cursor.execute("""
+            self._execute(conn, """
                 CREATE TABLE IF NOT EXISTS items (
-                    id TEXT PRIMARY KEY,
-                    source_id INTEGER,
-                    title TEXT, content TEXT, url TEXT UNIQUE, author TEXT,
-                    created_utc REAL, created_at TEXT, raw_json TEXT, item_type TEXT,
-                    scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    processed_at TIMESTAMP,
-                    FOREIGN KEY (source_id) REFERENCES sources (id) ON DELETE SET NULL
+                    id VARCHAR(255),
+                    source_id INT,
+                    title TEXT,
+                    content TEXT,
+                    url TEXT,
+                    author TEXT,
+                    created_utc DOUBLE,
+                    created_at TEXT,
+                    raw_json TEXT,
+                    item_type TEXT,
+                    scraped_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    processed_at DATETIME,
+                    topic TEXT,
+                    pais TEXT,
+                    PRIMARY KEY (id(255), source_id)
                 )
             """)
-
-            # Agrega columnas de forma segura (ignora si ya existen)
-            try: cursor.execute("ALTER TABLE items ADD COLUMN topic TEXT DEFAULT ''")
-            except: pass
-            try: cursor.execute("ALTER TABLE items ADD COLUMN pais TEXT DEFAULT 'paraguay'")
-            except: pass
-
-            cursor.execute("""
+            self._execute(conn, """
                 CREATE TABLE IF NOT EXISTS questions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    item_id TEXT NOT NULL, question TEXT NOT NULL, category TEXT,
-                    confidence REAL, model_used TEXT, topic TEXT DEFAULT '',
-                    analyzed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (item_id) REFERENCES items (id) ON DELETE CASCADE
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    item_id TEXT,
+                    question TEXT,
+                    category TEXT,
+                    confidence DOUBLE,
+                    model_used TEXT,
+                    analyzed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    topic TEXT
                 )
             """)
-
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS trend_terms (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    keyword TEXT NOT NULL, related_top TEXT, related_rising TEXT,
-                    autocomplete TEXT, interest_over_time TEXT, geo TEXT DEFAULT 'PY',
-                    captured_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-
-            cursor.execute("""
+            self._execute(conn, """
                 CREATE TABLE IF NOT EXISTS reports (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    topic TEXT NOT NULL, period_label TEXT, summary_json TEXT NOT NULL,
-                    generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    topic TEXT,
+                    period_label TEXT,
+                    summary_json TEXT,
+                    generated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-
-            cursor.execute("""
+            self._execute(conn, """
+                CREATE TABLE IF NOT EXISTS trend_terms (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    keyword TEXT,
+                    related_top TEXT,
+                    related_rising TEXT,
+                    autocomplete TEXT,
+                    interest_over_time TEXT,
+                    geo TEXT,
+                    captured_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            self._execute(conn, """
                 CREATE TABLE IF NOT EXISTS processing_log (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    step TEXT NOT NULL, status TEXT NOT NULL, message TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    step TEXT,
+                    status TEXT,
+                    message TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-
             conn.commit()
+        finally:
+            conn.close()
 
     def ensure_source(self, name, source_type, base_url=None):
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT OR IGNORE INTO sources (name, source_type, base_url)
-                VALUES (?, ?, ?)
-            """, (name, source_type, base_url))
-            conn.commit()
-
-            cursor.execute("SELECT id FROM sources WHERE name = ?", (name,))
-            row = cursor.fetchone()
-            return row[0] if row else None
+        conn = self._get_conn()
+        try:
+            cur = self._execute(conn, "SELECT id FROM sources WHERE name = %s", (name,))
+            row = cur.fetchone()
+            if row:
+                return row["id"]
+            cur = self._execute(conn,
+                "INSERT IGNORE INTO sources (name, source_type, base_url) VALUES (%s, %s, %s)",
+                (name, source_type, base_url),
+            )
+            if cur.lastrowid:
+                conn.commit()
+                return cur.lastrowid
+            cur = self._execute(conn, "SELECT id FROM sources WHERE name = %s", (name,))
+            row = cur.fetchone()
+            return row["id"] if row else None
+        finally:
+            conn.close()
 
     def save_item(self, item):
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            item_id = item.get("id")
-            url = item.get("url") or None
-            source_id = item.get("source_id")
-            title = item.get("title")
-            content = item.get("content")
-            topic = item.get("topic", "")
-            pais = item.get("pais", "paraguay")
-
-            if url:
-                cursor.execute("SELECT id FROM items WHERE url = ?", (url,))
-                existing = cursor.fetchone()
-                if existing:
-                    cursor.execute("""
-                        UPDATE items SET source_id=?, title=?, content=?, topic=?, pais=?, scraped_at=CURRENT_TIMESTAMP
-                        WHERE id=?
-                    """, (source_id, title, content, topic, pais, existing[0]))
-                    conn.commit()
-                    return existing[0]
-
-            if item_id:
-                cursor.execute("SELECT id FROM items WHERE id = ?", (item_id,))
-                if cursor.fetchone():
-                    cursor.execute("""
-                        UPDATE items SET source_id=?, title=?, content=?, url=?, topic=?, pais=?, scraped_at=CURRENT_TIMESTAMP
-                        WHERE id=?
-                    """, (source_id, title, content, url, topic, pais, item_id))
-                    conn.commit()
-                    return item_id
-
-            cursor.execute("""
-                INSERT INTO items
-                (id, source_id, title, content, url, author, created_utc, created_at, raw_json, item_type, topic, pais)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        conn = self._get_conn()
+        try:
+            self._execute(conn, """
+                REPLACE INTO items
+                    (id, source_id, title, content, url, author, created_utc,
+                     created_at, raw_json, item_type, topic, pais)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
-                item_id, source_id, title, content, url, item.get("author"),
-                item.get("created_utc"), item.get("created_at"), item.get("raw_json"),
-                item.get("item_type", "post"), topic, pais
+                item.get("id"), item.get("source_id"), item.get("title"),
+                item.get("content"), item.get("url"), item.get("author"),
+                item.get("created_utc"), item.get("created_at"),
+                item.get("raw_json"), item.get("item_type", "post"),
+                item.get("topic", ""), item.get("pais", "paraguay"),
             ))
             conn.commit()
-            return item_id
+            return item.get("id")
+        finally:
+            conn.close()
 
     def mark_item_processed(self, item_id):
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                UPDATE items
-                SET processed_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            """, (item_id,))
+        conn = self._get_conn()
+        try:
+            self._execute(conn,
+                "UPDATE items SET processed_at = CURRENT_TIMESTAMP WHERE id = %s",
+                (item_id,),
+            )
             conn.commit()
+        finally:
+            conn.close()
 
     def save_question(self, item_id, question, category, confidence=None, model_used=None, topic=""):
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT id FROM items WHERE id = ?", (item_id,))
-            if not cursor.fetchone():
-                cursor.execute("""
-                    INSERT OR IGNORE INTO items (id, title, content, item_type)
-                    VALUES (?, ?, ?, 'placeholder')
-                """, (item_id, question[:200], question))
-            cursor.execute("""
+        conn = self._get_conn()
+        try:
+            self._execute(conn, """
                 INSERT INTO questions (item_id, question, category, confidence, model_used, topic)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
             """, (item_id, question, category, confidence, model_used, topic))
             conn.commit()
+        finally:
+            conn.close()
 
     def save_trend_term(self, keyword, related_top=None, related_rising=None, autocomplete=None, interest_over_time=None, geo="PY"):
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO trend_terms
-                (keyword, related_top, related_rising, autocomplete, interest_over_time, geo)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                keyword,
-                related_top,
-                related_rising,
-                autocomplete,
-                interest_over_time,
-                geo
-            ))
+        conn = self._get_conn()
+        try:
+            self._execute(conn, """
+                INSERT INTO trend_terms (keyword, related_top, related_rising, autocomplete, interest_over_time, geo)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (keyword, related_top, related_rising, autocomplete, interest_over_time, geo))
             conn.commit()
+        finally:
+            conn.close()
 
     def save_report(self, topic, period_label, summary_json):
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
+        conn = self._get_conn()
+        try:
+            self._execute(conn, """
                 INSERT INTO reports (topic, period_label, summary_json)
-                VALUES (?, ?, ?)
+                VALUES (%s, %s, %s)
             """, (topic, period_label, summary_json))
             conn.commit()
+        finally:
+            conn.close()
 
     def log_step(self, step, status, message=None):
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO processing_log (step, status, message)
-                VALUES (?, ?, ?)
-            """, (step, status, message))
+        conn = self._get_conn()
+        try:
+            self._execute(conn,
+                "INSERT INTO processing_log (step, status, message) VALUES (%s, %s, %s)",
+                (step, status, message),
+            )
             conn.commit()
+        finally:
+            conn.close()
 
     def get_unprocessed_items(self):
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT id, title, content
-                FROM items
-                WHERE processed_at IS NULL
-            """)
-            return cursor.fetchall()
+        conn = self._get_conn()
+        try:
+            cur = self._execute(conn,
+                "SELECT * FROM items WHERE processed_at IS NULL ORDER BY scraped_at DESC"
+            )
+            return cur.fetchall()
+        finally:
+            conn.close()
 
     def get_all_questions_with_items(self):
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT q.question, q.category, q.confidence, q.model_used,
-                       i.title, i.url, i.item_type, i.scraped_at, s.name, s.source_type
+        conn = self._get_conn()
+        try:
+            cur = self._execute(conn, """
+                SELECT q.*, i.title, i.content, i.url, i.author, s.source_type, s.name as source_name
                 FROM questions q
-                JOIN items i ON q.item_id = i.id
+                LEFT JOIN items i ON q.item_id = i.id
                 LEFT JOIN sources s ON i.source_id = s.id
                 ORDER BY q.analyzed_at DESC
             """)
-            return cursor.fetchall()
+            return cur.fetchall()
+        finally:
+            conn.close()
+
+    def get_items_by_topic(self, topic, pais=None, limit=50):
+        conn = self._get_conn()
+        try:
+            if pais:
+                cur = self._execute(conn, """
+                    SELECT i.*, s.name as source_name, s.source_type
+                    FROM items i
+                    LEFT JOIN sources s ON i.source_id = s.id
+                    WHERE i.topic = %s AND i.pais = %s
+                    ORDER BY i.scraped_at DESC
+                    LIMIT %s
+                """, (topic, pais, limit))
+            else:
+                cur = self._execute(conn, """
+                    SELECT i.*, s.name as source_name, s.source_type
+                    FROM items i
+                    LEFT JOIN sources s ON i.source_id = s.id
+                    WHERE i.topic = %s
+                    ORDER BY i.scraped_at DESC
+                    LIMIT %s
+                """, (topic, limit))
+            return cur.fetchall()
+        finally:
+            conn.close()
+
+    def get_questions_by_topic(self, topic, limit=100):
+        conn = self._get_conn()
+        try:
+            cur = self._execute(conn, """
+                SELECT q.*, i.title, i.content, i.url, s.name as source_name, s.source_type
+                FROM questions q
+                LEFT JOIN items i ON q.item_id = i.id
+                LEFT JOIN sources s ON i.source_id = s.id
+                WHERE q.topic = %s
+                ORDER BY q.confidence DESC
+                LIMIT %s
+            """, (topic, limit))
+            return cur.fetchall()
+        finally:
+            conn.close()
 
     def get_latest_report(self, topic=None):
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
+        conn = self._get_conn()
+        try:
             if topic:
-                cursor.execute("""
-                    SELECT summary_json, generated_at
-                    FROM reports
-                    WHERE topic = ?
-                    ORDER BY generated_at DESC
-                    LIMIT 1
-                """, (topic,))
+                cur = self._execute(conn,
+                    "SELECT summary_json, generated_at FROM reports WHERE topic = %s ORDER BY generated_at DESC LIMIT 1",
+                    (topic,),
+                )
             else:
-                cursor.execute("""
-                    SELECT summary_json, generated_at
-                    FROM reports
-                    ORDER BY generated_at DESC
-                    LIMIT 1
-                """)
-            return cursor.fetchone()
+                cur = self._execute(conn,
+                    "SELECT summary_json, generated_at FROM reports ORDER BY generated_at DESC LIMIT 1"
+                )
+            row = cur.fetchone()
+            if row:
+                return (row["summary_json"], row["generated_at"])
+            return None
+        finally:
+            conn.close()
 
     def get_question_trends(self, topic="", recent_days=30):
-        from datetime import datetime, timedelta
+        recent = {}
+        older = {}
         cutoff = (datetime.now() - timedelta(days=recent_days)).isoformat()
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT question, COUNT(*) as freq
-                FROM questions
-                WHERE topic = ? AND analyzed_at >= ?
-                GROUP BY question
-                ORDER BY freq DESC
-                LIMIT 20
-            """, (topic, cutoff))
-            recent = dict(cursor.fetchall())
-            cursor.execute("""
-                SELECT question, COUNT(*) as freq
-                FROM questions
-                WHERE topic = ? AND analyzed_at < ?
-                GROUP BY question
-                ORDER BY freq DESC
-                LIMIT 20
-            """, (topic, cutoff))
-            older = dict(cursor.fetchall())
+        conn = self._get_conn()
+        try:
+            cur = self._execute(conn,
+                "SELECT question, COUNT(*) as cnt FROM questions WHERE topic = %s AND analyzed_at >= %s GROUP BY question",
+                (topic, cutoff),
+            )
+            for row in cur.fetchall():
+                recent[row["question"]] = row["cnt"]
+            cur = self._execute(conn,
+                "SELECT question, COUNT(*) as cnt FROM questions WHERE topic = %s AND analyzed_at < %s GROUP BY question",
+                (topic, cutoff),
+            )
+            for row in cur.fetchall():
+                older[row["question"]] = row["cnt"]
+        finally:
+            conn.close()
         return recent, older
 
     def get_trend_terms(self, limit=50):
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT keyword, related_top, related_rising, autocomplete, interest_over_time, geo, captured_at
-                FROM trend_terms
-                ORDER BY captured_at DESC
-                LIMIT ?
-            """, (limit,))
-            return cursor.fetchall()
+        conn = self._get_conn()
+        try:
+            cur = self._execute(conn,
+                "SELECT * FROM trend_terms ORDER BY captured_at DESC LIMIT %s",
+                (limit,),
+            )
+            return cur.fetchall()
+        finally:
+            conn.close()
+
+    def get_category_counts(self, topic):
+        conn = self._get_conn()
+        try:
+            cur = self._execute(conn,
+                "SELECT category, COUNT(*) as cnt FROM questions WHERE topic = %s GROUP BY category",
+                (topic,),
+            )
+            return {row["category"]: row["cnt"] for row in cur.fetchall()}
+        finally:
+            conn.close()
+
+    def prune_old_data(self, days=90):
+        conn = self._get_conn()
+        try:
+            cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+            self._execute(conn, "DELETE FROM items WHERE scraped_at < %s", (cutoff,))
+            self._execute(conn, "DELETE FROM questions WHERE analyzed_at < %s", (cutoff,))
+            self._execute(conn, "DELETE FROM reports WHERE generated_at < %s", (cutoff,))
+            self._execute(conn, "DELETE FROM trend_terms WHERE captured_at < %s", (cutoff,))
+            self._execute(conn, "DELETE FROM processing_log WHERE created_at < %s", (cutoff,))
+            conn.commit()
+        finally:
+            conn.close()
