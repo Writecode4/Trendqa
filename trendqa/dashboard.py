@@ -122,6 +122,27 @@ _GEO_ENTITY_PATTERNS = {
     "latam": [r"\blatinoam[eé]rica\b", r"\blatin america\b", r"\blatam\b", r"\bam[eé]rica latina\b"],
 }
 
+_DOMAIN_COUNTRY = {
+    "abc.com.py": "paraguay", "ultimahora.com": "paraguay", "lanacion.com.py": "paraguay",
+    "hoy.com.py": "paraguay", "popular.com.py": "paraguay", "cronica.com.py": "paraguay",
+    "adndigital.com.py": "paraguay", "paraguay.com": "paraguay", "rdn.com.py": "paraguay",
+    "clarin.com": "argentina", "lanacion.com.ar": "argentina", "pagina12.com.ar": "argentina",
+    "ambito.com": "argentina", "infobae.com": "argentina", "eldestapeweb.com": "argentina",
+    "eluniversal.com.mx": "mexico", "jornada.com.mx": "mexico", "milenio.com": "mexico",
+    "eltiempo.com": "colombia", "elespectador.com": "colombia", "semana.com": "colombia",
+    "elcomercio.pe": "peru", "gestion.pe": "peru", "larepublica.pe": "peru",
+    "emol.com": "chile", "latercera.com": "chile", "cooperativa.cl": "chile",
+    "elpais.com": "espana", "elmundo.es": "espana", "abc.es": "espana",
+}
+
+def _country_from_domain(url):
+    if not url:
+        return None
+    for domain, country in _DOMAIN_COUNTRY.items():
+        if domain in url.lower():
+            return country
+    return None
+
 _GEO_TYPE = {
     "country": {"paraguay", "argentina", "chile", "colombia", "peru", "mexico",
                 "brasil", "uruguay", "bolivia", "ecuador", "venezuela", "espana",
@@ -177,6 +198,17 @@ def _filter_by_country(items, pais):
     result = []
     for item in items:
         text = f"{item.get('title', '')} {item.get('content', '')}"
+        url = item.get("url", "") or ""
+        domain_country = _country_from_domain(url)
+        if not domain_country:
+            domain_country = _country_from_domain(item.get("source_name", "") or "")
+        if domain_country:
+            if domain_country == pais:
+                result.append(item)
+                continue
+            if pais not in text.lower():
+                logger.info(f"Filtrado item '{item.get('id','')[:40]}': dominio de {domain_country}, no {pais}")
+                continue
         if _is_relevant_for_country(text, pais):
             result.append(item)
         else:
@@ -199,16 +231,55 @@ _SPORTS_PATTERNS = [
     r"\b(?:copa|trofeo|campe[óo]n|subcampe[óo]n|semifinal|cuartos\s+de\s+final)\b",
     r"\bpichichi\b", r"\bgoleo\b",
     r"\bespn\b", r"\bdeportes\b",
+    r"\bclaytenis\b",
 ]
 
 _SPORTS_CORE = re.compile("|".join(_SPORTS_PATTERNS), re.IGNORECASE)
+
+_CRIME_PATTERNS = [
+    r"\bhomicidio\b", r"\basesinato\b", r"\bmuerto\b", r"\bfallecido\b",
+    r"\bpolicial\b", r"\bpolic[ií]a\b", r"\bpolic[ií]aca?\b",
+    r"\bdelincuencia\b", r"\bdelincuente\b", r"\bdelito\b", r"\bdelictivo?\b",
+    r"\brobo\b", r"\brob[oa]r\b", r"\bhurt[oa]\b",
+    r"\bsecuestro\b", r"\bsecuestr[oa]r\b",
+    r"\bviolencia\b", r"\bviolento\b",
+    r"\bnarcotr[áa]fico\b", r"\bnarco\b",
+    r"\bbalacera\b", r"\btiroteo\b", r"\bdispar[oa]r\b",
+    r"\bfiscal[ií]a\b", r"\bfiscal\b",
+    r"\bjudicial\b", r"\bjuzgado\b", r"\btribunal\b", r"\bjue[sz]\b",
+    r"\bc[áa]rcel\b", r"\bpres[oi]\b", r"\bprisi[óo]n\b",
+    r"\bconden[ao]\b", r"\bcondena\b",
+    r"\bpenal\b", r"\bpenitenciario\b",
+    r"\bnoticia\s+roja\b", r"\bprensa\s+(?:amarilla|sensacionalista)\b",
+    r"\baccidente\s+(?:de\s+tr[áa]nsito|fatal|a[ée]reo|ferroviario)\b",
+    r"\b(?:choque|colisi[óo]n|vuelco|incendio)\s+(?:vehicular|de\s+auto|de\s+cami[óo]n|de\s+[óo]mnibus)\b",
+    r"\bdetenid[ao]\b", r"\bdetenci[óo]n\b",
+    r"\binvestigaci[óo]n\s+(?:policial|criminal|judicial|penal)\b",
+    r"\bcrimen\b", r"\bcriminal\b",
+]
+_CRIME_CORE = re.compile("|".join(_CRIME_PATTERNS), re.IGNORECASE)
 
 def _filter_sports(items):
     result = []
     for item in items:
         text = f"{item.get('title', '')} {item.get('content', '')}"
+        url = item.get("url", "") or ""
+        source = item.get("source_name", "") or ""
         if _SPORTS_CORE.search(text):
             logger.info(f"Filtrado deportivo: {item.get('id','')[:40]} {item.get('title','')[:50]}")
+            continue
+        if "claytenis" in url.lower() or "claytenis" in source.lower():
+            logger.info(f"Filtrado deportivo (claytenis): {item.get('id','')[:40]}")
+            continue
+        result.append(item)
+    return result
+
+def _filter_crime(items):
+    result = []
+    for item in items:
+        text = f"{item.get('title', '')} {item.get('content', '')}"
+        if _CRIME_CORE.search(text):
+            logger.info(f"Filtrado policial: {item.get('id','')[:40]} {item.get('title','')[:50]}")
             continue
         result.append(item)
     return result
@@ -686,6 +757,7 @@ def run_pipeline(q, pais):
     items = collect_items_parallel(q, pais=pais)
     items = _filter_by_country(items, pais)
     items = _filter_sports(items)
+    items = _filter_crime(items)
 
     # Fallback: usar items existentes de la BD si no se recolectaron nuevos
     if not items:
@@ -699,9 +771,10 @@ def run_pipeline(q, pais):
                 items = db_items
                 logger.info(f"Usando {len(items)} items existentes de BD para '{q}' (sin filtro de pais)")
                 items = _filter_by_country(items, pais)
-    # Filtrar deportes también en items de BD
+    # Filtrar deportes y contenido policial también en items de BD
     if items:
         items = _filter_sports(items)
+        items = _filter_crime(items)
 
     questions = QuestionAnalyzer(max_items=20, pais=pais).analyze_items(items)
 
@@ -723,13 +796,14 @@ def run_pipeline(q, pais):
                 if len(questions) >= 5:
                     break
 
-    # Filtrar preguntas por país incorrecto y deportes
+    # Filtrar preguntas por país incorrecto, deportes y contenido policial
     if questions:
         before = len(questions)
         questions = [q for q in questions if _is_relevant_for_country(f"{q.get('question', '')} {q.get('content', '')}", pais)]
         questions = [q for q in questions if not _SPORTS_CORE.search(f"{q.get('question', '')} {q.get('content', '')}")]
+        questions = [q for q in questions if not _CRIME_CORE.search(f"{q.get('question', '')} {q.get('content', '')}")]
         if len(questions) < before:
-            logger.info(f"Filtradas {before - len(questions)} preguntas por país/deportes")
+            logger.info(f"Filtradas {before - len(questions)} preguntas por país/deportes/policial")
 
     kw = TrendAnalyzer().analyze_items(items)["top_keywords"]
     save_to_db(db, items, questions, topic=q, pais=pais)

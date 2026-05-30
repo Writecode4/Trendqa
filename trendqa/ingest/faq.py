@@ -83,7 +83,7 @@ class FAQIngestor:
             "Accept-Language": _ACCEPT_LANG_BY_COUNTRY.get(self.pais, "es-419,es;q=0.9"),
         }
         
-        self._base_faqs = _FAQ_BY_COUNTRY.get(self.pais, _FAQ_BY_COUNTRY["paraguay"])
+        self._base_faqs = _FAQ_BY_COUNTRY.get(self.pais, [])
 
     def _matches_query(self, text):
         if not self.query_pattern:
@@ -121,7 +121,7 @@ class FAQIngestor:
 
         # 2. Scraping externo SOLO si faltan resultados y hay query
         if len(items) < limit and self.query_words:
-            faq_sites = _SCRAPE_URLS_BY_COUNTRY.get(self.pais, _SCRAPE_URLS_BY_COUNTRY["paraguay"])
+            faq_sites = _SCRAPE_URLS_BY_COUNTRY.get(self.pais, [])
             for url in faq_sites:
                 if len(items) >= limit:
                     break
