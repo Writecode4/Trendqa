@@ -33,16 +33,16 @@ load_dotenv(BASE / ".env")
 dashboard_bp = Blueprint("dashboard", __name__)
 logger = logging.getLogger(__name__)
 
-VALID_COUNTRIES = {"paraguay", "argentina", "mexico", "colombia"}
+VALID_COUNTRIES = {"paraguay", "argentina", "mexico", "colombia", "brasil"}
 
 SEARCH_TERMS = {
-    "experiencia_compra": ["compra", "pedido", "devolución", "garantía", "rastreo", "reclamo", "cancelar", "cambio", "soporte", "seguimiento"],
-    "pagos_financiacion": ["pago", "tarjeta", "cuota", "financiación", "bancard", "billetera", "wallet", "paypal", "transferencia", "débito", "crédito", "cripto"],
-    "confianza_seguridad": ["estafa", "confiable", "seguro", "reseña falsa", "engaño", "fraude", "verificar", "opiniones", "reputación"],
-    "plataformas_canales": ["marketplace", "tienda online", "instagram", "facebook", "shopify", "mercadolibre", "vender", "ecommerce"],
-    "logistica_envios": ["envío", "courier", "delivery", "paquete", "entrega", "aduana", "importación", "tracking", "logística"],
-    "marketing_descubrimiento": ["oferta", "descuento", "promo", "precio barato", "comparación", "cupón", "liquidación", "rebaja", "económico"],
-    "marcas_proveedores": ["marca", "proveedor", "empresa", "fabricante", "distribuidor", "tienda", "producto original", "mayorista"],
+    "experiencia_compra": ["compra", "pedido", "devolución", "garantía", "rastreo", "reclamo", "cancelar", "cambio", "soporte", "seguimiento", "reembolso", "atención al cliente", "postventa"],
+    "pagos_financiacion": ["pago", "tarjeta", "cuota", "financiación", "bancard", "billetera", "wallet", "paypal", "transferencia", "débito", "crédito", "cripto", "binance"],
+    "confianza_seguridad": ["estafa", "confiable", "seguro", "reseña falsa", "engaño", "fraude", "verificar", "opiniones", "reputación", "confianza", "seguridad"],
+    "plataformas_canales": ["marketplace", "tienda online", "instagram", "facebook", "shopify", "mercadolibre", "vender", "ecommerce", "courier", "envío", "paquetería"],
+    "logistica_envios": ["envío", "courier", "delivery", "paquete", "entrega", "aduana", "importación", "tracking", "logística", "retraso", "demora", "despacho", "seguimiento"],
+    "marketing_descubrimiento": ["oferta", "descuento", "promo", "precio barato", "comparación", "cupón", "liquidación", "rebaja", "económico", "promoción", "publicidad", "visibilidad"],
+    "marcas_proveedores": ["marca", "proveedor", "empresa", "fabricante", "distribuidor", "tienda", "producto original", "mayorista", "minorista", "local", "internacional", "nacional", "reconocida", "desconocida"],
 }
 
 def expand_terms(q, pais=None):
@@ -52,6 +52,7 @@ def expand_terms(q, pais=None):
         "argentina": ["online", "e-commerce", "tienda virtual", "mercadolibre", "envío"],
         "mexico": ["online", "e-commerce", "tienda en línea", "mercadolibre", "paquetería"],
         "colombia": ["online", "e-commerce", "tienda virtual", "mercadolibre", "envío"],
+        "brasil": ["online", "e-commerce", "loja virtual", "marketplace", "frete"],
     }
     if pais and pais.lower() in ecommerce_modifiers:
         modifiers = ecommerce_modifiers[pais.lower()]
@@ -169,20 +170,6 @@ def _is_relevant_for_country(text, pais):
                 return False
             if e != pais:
                 return False
-        else:
-            region = _COUNTRY_REGION.get(e, e)
-    if region in ("europa", "asia", "africa", "america_norte", "oceania") and target_region != region:
-                return False
-    return True
-    if not mentioned:
-        return True
-    has_target = pais in mentioned
-    has_region_target = any(m == _GEO_COUNTRY.get(pais, pais) for m in mentioned if m != pais and m in _GEO_COUNTRY.values())
-    has_other = any(m not in (pais, _GEO_COUNTRY.get(pais, pais)) for m in mentioned)
-    if has_other and not has_target:
-        return False
-    if not has_target and not has_region_target and len(mentioned) > 0:
-        return False
     return True
 
 def _filter_by_country(items, pais):
@@ -393,7 +380,7 @@ def _recommended_action(category, source_type, confidence):
     return {"texto": texto, "tipo": tipo, "badge": badge}
 
 CHURN_CATEGORIAS_ALTAS = {"experiencia_compra", "confianza_seguridad"}
-CHURN_KEYWORDS = ["devolver", "cancelar", "queja", "mal servicio", "estafa", "robo", "no funciona", "pésimo", "horrible", "nunca", "mentira", "no recomiendo", "alternativa", "otra empresa", "cambiar", "me voy", "competencia"]
+CHURN_KEYWORDS = ["devolver", "cancelar", "queja", "mal servicio", "estafa", "robo", "no funciona", "pésimo", "horrible", "nunca", "mentira", "no recomiendo", "alternativa", "otra empresa", "cambiar", "me voy", "competencia", "abusivo", "caro", "demora", "retraso", "mala experiencia", "decepción"]
 
 def _find_rising_questions(db, topic=""):
     recent, older = db.get_question_trends(topic=topic, recent_days=30)
@@ -691,7 +678,7 @@ def _map_kpis(category, alert_type):
     return kpi_map.get(category, {}).get(alert_type, ["KPI genérico", "Monitorear"])
 def run_pipeline(q, pais):
     if not pais or pais.lower() not in VALID_COUNTRIES:
-        raise ValueError(f"País '{pais}' no soportado. Debe ser paraguay, argentina o mexico.")
+        raise ValueError(f"País '{pais}' no soportado. Debe ser paraguay, argentina, mexico, colombia o brasil.")
 
     db = Database()
     items = collect_items_parallel(q, pais=pais)
@@ -709,6 +696,7 @@ def run_pipeline(q, pais):
             if db_items:
                 items = db_items
                 logger.info(f"Usando {len(items)} items existentes de BD para '{q}' (sin filtro de pais)")
+                items = _filter_by_country(items, pais)
     # Filtrar deportes también en items de BD
     if items:
         items = _filter_sports(items)
@@ -781,6 +769,10 @@ def _cache_get(key):
 def _cache_set(key, val, ttl=3600):
     with _CACHE_LOCK: _CACHE_STORE[key] = (val, time.time() + ttl)
 
+def get_cached_summary(topic, pais="paraguay"):
+    """Recupera el summary del caché sin ejecutar el pipeline."""
+    return _cache_get(f"dashboard:{topic}:{pais.lower()}")
+
 @dashboard_bp.route("/dashboard")
 def dashboard():
     q = request.args.get("q", "logistica_envios")
@@ -810,8 +802,10 @@ def dashboard():
             "api_enabled": False, "api_calls_used": 0, "api_limit": 1000, "alerts": []}
         return render_template("dashboard.html", summary=empty), 200
 
-from flask import redirect, request
+from flask import redirect, request, url_for
 
 @dashboard_bp.route('/dashboard/pdf')
 def download_pdf():
-    return redirect(f"https://sikuri.lat/contacto.html?topic={request.args.get('topic', '')}&pais={request.args.get('pais', '')}")
+    topic = request.args.get('topic', '')
+    pais = request.args.get('pais', '')
+    return redirect(url_for('contact.contacto', topic=topic, pais=pais))
