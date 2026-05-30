@@ -34,6 +34,37 @@ def _cached_get(url, headers, timeout=10):
     return None, False
 
 
+_FAQ_BY_COUNTRY = {
+    "paraguay": [
+        {"q": "¿Cuál es el mejor courier para Paraguay?", "a": "Depende del costo, tiempo y soporte. Conviene comparar reseñas y tiempos de entrega."},
+        {"q": "¿Cuánto tarda un envío internacional?", "a": "Varía según origen, courier y aduana. Puede ir de pocos días a varias semanas."},
+        {"q": "¿Qué es vía Miami?", "a": "Es una modalidad logística para consolidar compras en EE. UU. antes de enviarlas a Paraguay."},
+        {"q": "¿Cómo rastrear un pedido?", "a": "Usando el código de seguimiento del courier en su sitio web."},
+        {"q": "¿Hay impuestos de importación?", "a": "Sí, la aduana paraguaya aplica aranceles según el tipo de producto y valor."},
+        {"q": "¿Cuál es la franquicia para compras internacionales?", "a": "Actualmente hasta USD 500 sin tributos para particulares, vía courier."},
+        {"q": "¿Cómo evitar estafas en compras online?", "a": "Verificar reputación del vendedor, usar medios de pago seguros, revisar políticas de devolución."},
+    ],
+    "brasil": [
+        {"q": "Qual o melhor frete para o Brasil?", "a": "Depende do custo, prazo e confiabilidade. Comparar avaliações de Correios e transportadoras."},
+        {"q": "Quanto tempo leva uma entrega internacional?", "a": "Varia conforme a origem, transportadora e alfândega. Pode levar de dias a semanas."},
+        {"q": "Como rastrear um pedido?", "a": "Use o código de rastreamento da transportadora no site oficial."},
+        {"q": "Quais os impostos de importação no Brasil?", "a": "A Receita Federal aplica tributos conforme o tipo de produto e valor declarado."},
+        {"q": "Qual a franquia para compras internacionais?", "a": "Compras até USD 50 entre pessoas físicas são isentas de imposto de importação."},
+        {"q": "Como evitar golpes em compras online?", "a": "Verificar reputação do vendedor, usar meios de pagamento seguros, revisar políticas de devolução."},
+        {"q": "Como funciona o Mercado Libre no Brasil?", "a": "É o maior marketplace da América Latina, com proteção ao comprador e diversas opções de frete."},
+    ],
+}
+
+_SCRAPE_URLS_BY_COUNTRY = {
+    "paraguay": ["https://www.aduana.gov.py/faq", "https://www.bancard.com.py/ayuda"],
+    "brasil": ["https://www.gov.br/receitafederal/pt-br/assuntos/aduana-e-comercio-exterior", "https://www.gov.br/procon/pt-br"],
+}
+
+_ACCEPT_LANG_BY_COUNTRY = {
+    "paraguay": "es-419,es;q=0.9",
+    "brasil": "pt-BR,pt;q=0.9",
+}
+
 class FAQIngestor:
     def __init__(self, query=None, **kwargs):
         self.query = query or ""
@@ -41,7 +72,7 @@ class FAQIngestor:
         # Filtrar palabras clave relevantes
         self.query_words = [
             w for w in (query.lower().split() if query else [])
-            if len(w) > 3 and w not in {self.pais, "para", "que", "como", "cuanto", "cual"}
+            if len(w) > 3 and w not in {self.pais, "para", "que", "como", "cuanto", "cual", "para", "qual"}
         ]
         self.query_pattern = re.compile(
             r'|'.join(re.escape(w) for w in self.query_words), re.I
@@ -49,19 +80,10 @@ class FAQIngestor:
         
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept-Language": "es-419,es;q=0.9",
+            "Accept-Language": _ACCEPT_LANG_BY_COUNTRY.get(self.pais, "es-419,es;q=0.9"),
         }
         
-        # FAQs hardcoded optimizadas
-        self._base_faqs = [
-            {"q": "¿Cuál es el mejor courier para Paraguay?", "a": "Depende del costo, tiempo y soporte. Conviene comparar reseñas y tiempos de entrega."},
-            {"q": "¿Cuánto tarda un envío internacional?", "a": "Varía según origen, courier y aduana. Puede ir de pocos días a varias semanas."},
-            {"q": "¿Qué es vía Miami?", "a": "Es una modalidad logística para consolidar compras en EE. UU. antes de enviarlas a Paraguay."},
-            {"q": "¿Cómo rastrear un pedido?", "a": "Usando el código de seguimiento del courier en su sitio web."},
-            {"q": "¿Hay impuestos de importación?", "a": "Sí, la aduana paraguaya aplica aranceles según el tipo de producto y valor."},
-            {"q": "¿Cuál es la franquicia para compras internacionales?", "a": "Actualmente hasta USD 500 sin tributos para particulares, vía courier."},
-            {"q": "¿Cómo evitar estafas en compras online?", "a": "Verificar reputación del vendedor, usar medios de pago seguros, revisar políticas de devolución."},
-        ]
+        self._base_faqs = _FAQ_BY_COUNTRY.get(self.pais, _FAQ_BY_COUNTRY["paraguay"])
 
     def _matches_query(self, text):
         if not self.query_pattern:
@@ -99,10 +121,7 @@ class FAQIngestor:
 
         # 2. Scraping externo SOLO si faltan resultados y hay query
         if len(items) < limit and self.query_words:
-            faq_sites = [
-                "https://www.aduana.gov.py/faq",
-                "https://www.bancard.com.py/ayuda",
-            ]
+            faq_sites = _SCRAPE_URLS_BY_COUNTRY.get(self.pais, _SCRAPE_URLS_BY_COUNTRY["paraguay"])
             for url in faq_sites:
                 if len(items) >= limit:
                     break
