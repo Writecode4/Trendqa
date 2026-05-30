@@ -55,11 +55,47 @@
             <option value="latam" disabled>LATAM (próximamente)</option>
             <option value="global" disabled>Global (próximamente)</option>
           </select>
-          <button type="submit" class="btn" style="white-space:nowrap;">Generar Dashboard</button>
+          <button type="submit" class="btn" style="white-space:nowrap;" onclick="showLoader()">Generar Dashboard</button>
         </form>
       </div>
     </div>
   </section>
+
+  <!-- Loading Overlay -->
+  <div id="loaderOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,0.92);z-index:9999;flex-direction:column;align-items:center;justify-content:center;">
+    <div style="width:320px;max-width:80%;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+        <span style="color:#e2e8f0;font-size:0.9rem;">Generando dashboard...</span>
+        <span id="loaderPct" style="color:#0496FF;font-size:0.9rem;font-weight:bold;">0%</span>
+      </div>
+      <div style="width:100%;height:6px;background:#1e293b;border-radius:3px;overflow:hidden;">
+        <div id="loaderBar" style="width:0%;height:100%;background:linear-gradient(90deg,#0496FF,#38bdf8);border-radius:3px;transition:width 0.4s ease;"></div>
+      </div>
+      <p id="loaderMsg" style="color:#64748b;font-size:0.8rem;margin-top:12px;text-align:center;">Recolectando datos de múltiples fuentes...</p>
+    </div>
+  </div>
+
+  <script>
+    function showLoader() {
+      document.getElementById('loaderOverlay').style.display = 'flex';
+      var pct = 0;
+      var msgs = [
+        "Recolectando datos de múltiples fuentes...",
+        "Analizando redes sociales y foros...",
+        "Procesando artículos y noticias...",
+        "Extrayendo preguntas clave...",
+        "Generando insights y recomendaciones..."
+      ];
+      var interval = setInterval(function() {
+        pct += Math.floor(Math.random() * 8) + 2;
+        if (pct >= 100) { pct = 99; }
+        document.getElementById('loaderBar').style.width = pct + '%';
+        document.getElementById('loaderPct').textContent = pct + '%';
+        document.getElementById('loaderMsg').textContent = msgs[Math.min(Math.floor(pct / 20), msgs.length - 1)];
+      }, 600);
+      window.addEventListener('pagehide', function() { clearInterval(interval); });
+    }
+  </script>
 
   <div class="cta-section" style="border-top:1px solid rgba(255,255,255,0.05);">
     <div>
