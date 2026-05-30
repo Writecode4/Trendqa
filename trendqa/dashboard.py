@@ -82,29 +82,180 @@ def _fetch_safe(name, ingestor_cls, query, timeout=10, **kwargs):
         logger.warning(f"⚠️ {name} falló: {e}")
         return []
 
+_GEO_ENTITY_PATTERNS = {
+    "paraguay": [r"\bparaguay\b", r"\bparaguay[ao]\b", r"\bpy\b"],
+    "argentina": [r"\bargentin[ao]\b", r"\bargentina\b"],
+    "chile": [r"\bchile\b", r"\bchilen[ao]\b"],
+    "colombia": [r"\bcolombia\b", r"\bcolombian[ao]\b", r"\bcol\b"],
+    "peru": [r"\bper[úu]\b", r"\bperuan[ao]\b"],
+    "mexico": [r"\bm[eé]xico\b", r"\bmexican[ao]\b"],
+    "brasil": [r"\bbrasil\b", r"\bbrasileñ[ao]\b"],
+    "uruguay": [r"\buruguay\b", r"\buruguay[ao]\b"],
+    "bolivia": [r"\bbolivia\b", r"\bbolivian[ao]\b"],
+    "ecuador": [r"\becuador\b", r"\becuatorian[ao]\b"],
+    "venezuela": [r"\bvenezuela\b", r"\bvenezolan[ao]\b"],
+    "espana": [r"\bespaña\b", r"\bespañol\b", r"\bespan[aá]"],
+    "eeuu": [r"\b(?:ee\.?\s*uu\.?|usa|united states|estados unidos)\b"],
+    "europa": [r"\beuropa\b", r"\beurope\b", r"\beuropeo\b", r"\beuropean\b", r"\bue\b", r"\bunion europea\b"],
+    "reino_unido": [r"\breino unido\b", r"\bunited kingdom\b", r"\buk\b", r"\binglaterra\b", r"\bengland\b"],
+    "alemania": [r"\balemania\b", r"\bgermany\b", r"\balemán\b", r"\bgerman\b"],
+    "francia": [r"\bfrancia\b", r"\bfrance\b", r"\bfranc[ée]s\b", r"\bfrench\b"],
+    "italia": [r"\bitalia\b", r"\bitaly\b", r"\bitaliano\b", r"\bitalian\b"],
+    "portugal": [r"\bportugal\b", r"\bportugu[ée]s\b"],
+    "paises_bajos": [r"\bp[aí]ses bajos\b", r"\bnetherlands\b", r"\bholanda\b", r"\bholland\b"],
+    "belgica": [r"\bb[eé]lgica\b", r"\bbelgium\b"],
+    "suiza": [r"\bsuiza\b", r"\bswitzerland\b", r"\bsuizo\b"],
+    "suecia": [r"\bsuecia\b", r"\bsweden\b", r"\bsueco\b"],
+    "noruega": [r"\bnoruega\b", r"\bnorway\b"],
+    "dinamarca": [r"\bdinamarca\b", r"\bdenmark\b"],
+    "polonia": [r"\bpolonia\b", r"\bpoland\b", r"\bpolaco\b"],
+    "rusia": [r"\brusia\b", r"\brussia\b", r"\bruso\b"],
+    "china": [r"\bchina\b", r"\bchino\b", r"\bchinese\b"],
+    "japon": [r"\bjap[óo]n\b", r"\bjapan\b", r"\bjapon[ée]s\b"],
+    "india": [r"\bindia\b", r"\bindio\b", r"\bindian\b"],
+    "asia": [r"\basi[ae]\b", r"\basian\b"],
+    "africa": [r"\báfrica\b", r"\bafrican[oa]\b", r"\bafrican\b"],
+    "australia": [r"\baustralia\b", r"\baustralian\b"],
+    "canada": [r"\bcanad[áa]\b", r"\bcanadian\b"],
+    "latam": [r"\blatinoam[eé]rica\b", r"\blatin america\b", r"\blatam\b", r"\bam[eé]rica latina\b"],
+}
+
+_GEO_TYPE = {
+    "country": {"paraguay", "argentina", "chile", "colombia", "peru", "mexico",
+                "brasil", "uruguay", "bolivia", "ecuador", "venezuela", "espana",
+                "reino_unido", "alemania", "francia", "italia", "portugal",
+                "belgica", "suiza", "suecia", "noruega", "dinamarca", "polonia",
+                "rusia", "china", "japon", "india", "canada", "australia"},
+    "region": {"latam", "europa", "asia", "africa", "oceania", "america_norte"},
+    "meta": {"eeuu"},
+}
+
+def _mentioned_geo(text):
+    text_lower = text.lower()
+    found = set()
+    for entity, patterns in _GEO_ENTITY_PATTERNS.items():
+        if any(re.search(p, text_lower) for p in patterns):
+            found.add(entity)
+    return found
+
+_COUNTRY_REGION = {
+    "paraguay": "latam", "argentina": "latam", "chile": "latam",
+    "colombia": "latam", "peru": "latam", "mexico": "latam",
+    "brasil": "latam", "uruguay": "latam", "bolivia": "latam",
+    "ecuador": "latam", "venezuela": "latam",
+    "espana": "europa", "reino_unido": "europa",
+    "alemania": "europa", "francia": "europa", "italia": "europa",
+    "portugal": "europa", "belgica": "europa", "suiza": "europa",
+    "suecia": "europa", "noruega": "europa", "dinamarca": "europa",
+    "polonia": "europa", "rusia": "europa",
+    "china": "asia", "japon": "asia", "india": "asia",
+    "canada": "america_norte", "australia": "oceania",
+    "eeuu": "america_norte",
+}
+
+def _is_relevant_for_country(text, pais):
+    pais = pais.lower()
+    mentioned = _mentioned_geo(text)
+    if not mentioned:
+        return True
+    if pais in mentioned:
+        return True
+    target_region = _COUNTRY_REGION.get(pais, "")
+    for e in mentioned:
+        if e == "latam":
+            continue
+        if e in _COUNTRY_REGION:
+            if _COUNTRY_REGION[e] != target_region:
+                return False
+            if e != pais:
+                return False
+        else:
+            region = _COUNTRY_REGION.get(e, e)
+    if region in ("europa", "asia", "africa", "america_norte", "oceania") and target_region != region:
+                return False
+    return True
+    if not mentioned:
+        return True
+    has_target = pais in mentioned
+    has_region_target = any(m == _GEO_COUNTRY.get(pais, pais) for m in mentioned if m != pais and m in _GEO_COUNTRY.values())
+    has_other = any(m not in (pais, _GEO_COUNTRY.get(pais, pais)) for m in mentioned)
+    if has_other and not has_target:
+        return False
+    if not has_target and not has_region_target and len(mentioned) > 0:
+        return False
+    return True
+
+def _filter_by_country(items, pais):
+    result = []
+    for item in items:
+        text = f"{item.get('title', '')} {item.get('content', '')}"
+        if _is_relevant_for_country(text, pais):
+            result.append(item)
+        else:
+            logger.info(f"Filtrado item '{item.get('id','')[:40]}': menciona otro país, source={item.get('source_type')}")
+    return result
+
+_SPORTS_PATTERNS = [
+    r"\bf[úu]tbol\b", r"\bfutbol[íi]stica?\b", r"\bworld cup\b", r"\bmundial\b",
+    r"\bgol\b", r"\bgoles\b", r"\bgolead[ao]\b",
+    r"\btenis\b", r"\btenista\b", r"\bnadador\b", r"\bnataci[óo]n\b",
+    r"\bb[ée]isbol\b", r"\bMLB\b", r"\bNBA\b", r"\bNFL\b", r"\bUEFA\b",
+    r"\bjugador\b", r"\bjugadora\b",
+    r"\b(?:delantero|defensa|mediocampista|arquero|portero|guardameta)\b",
+    r"\bentrenador\b", r"\bdt\b",
+    r"\bliga\s+(?:espa[ñn]ola|inglesa|francesa|alemana|italiana|argentina|mexicana|colombiana|chilena|peruana|paraguaya)\b",
+    r"\bcampeonato\s+(?:nacional|mundial|latinoamericano|sudamericano|europeo)\b",
+    r"\bcancha\b", r"\bestadio\b", r"\b[áa]rbitro\b",
+    r"\bdeportivo?\b", r"\bdeportiva?\b",
+    r"\bselecci[óo]n\s+(?:nacional|argentina|mexicana|colombiana|paraguaya|chilena|peruana|brasile[ñn]a)\b",
+    r"\b(?:copa|trofeo|campe[óo]n|subcampe[óo]n|semifinal|cuartos\s+de\s+final)\b",
+    r"\bpichichi\b", r"\bgoleo\b",
+    r"\bespn\b", r"\bdeportes\b",
+]
+
+_SPORTS_CORE = re.compile("|".join(_SPORTS_PATTERNS), re.IGNORECASE)
+
+def _filter_sports(items):
+    result = []
+    for item in items:
+        text = f"{item.get('title', '')} {item.get('content', '')}"
+        if _SPORTS_CORE.search(text):
+            logger.info(f"Filtrado deportivo: {item.get('id','')[:40]} {item.get('title','')[:50]}")
+            continue
+        result.append(item)
+    return result
+
 def collect_items_parallel(q, pais="paraguay", max_workers=4):
     items = []
     terms = expand_terms(q)
-    t = terms[0] if terms else q
-    tasks = [
-        ("Reddit", RedditIngestor, t, 5),
-        ("X", XIngestor, t, 3),
-        ("RSS", RSSIngestor, t, 5),
-        ("MercadoLibre", MercadoLibreIngestor, t, 5),
-        ("GoogleNews", GoogleNewsIngestor, t, 10),
-    ]
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(_fetch_safe, name, cls, q, lim, pais=pais): name for name, cls, q, lim in tasks}
-        for future in as_completed(futures, timeout=20):
-            try:
-                res = future.result()
-                if res: items.extend(res)
-            except Exception as e:
-                logger.warning(f"Error en hilo de fuentes: {e}")
-    items.extend(_fetch_safe("FAQ", FAQIngestor, t, limit=3, timeout=5, pais=pais))
-    items.extend(_fetch_safe("Reviews", ReviewsIngestor, t, limit=3, timeout=5, pais=pais))
+    seen_ids = set()
+    for t in terms[:3]:
+        tasks = [
+            ("Reddit", RedditIngestor, t, 5),
+            ("X", XIngestor, t, 3),
+            ("RSS", RSSIngestor, t, 5),
+            ("MercadoLibre", MercadoLibreIngestor, t, 5),
+            ("GoogleNews", GoogleNewsIngestor, t, 10),
+        ]
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_fetch_safe, name, cls, t, lim, pais=pais): name for name, cls, _, lim in tasks}
+            for future in as_completed(futures, timeout=20):
+                try:
+                    res = future.result()
+                    if res:
+                        for item in res:
+                            if item.get("id") not in seen_ids:
+                                seen_ids.add(item.get("id"))
+                                items.append(item)
+                except Exception as e:
+                    logger.warning(f"Error en hilo de fuentes: {e}")
+        items.extend(_fetch_safe("FAQ", FAQIngestor, t, limit=3, timeout=5, pais=pais))
+        items.extend(_fetch_safe("Reviews", ReviewsIngestor, t, limit=3, timeout=5, pais=pais))
+        if items:
+            break
     try:
-        trends = GoogleTrendsIngestor().get_trend_bundle(t)
+        t = terms[0] if terms else q
+        trends = GoogleTrendsIngestor(pais=pais).get_trend_bundle(t)
         now = datetime.now().isoformat()
         items.append({
             "id": f"trends_{q}", "title": f"Tendencias: {q}",
@@ -544,12 +695,56 @@ def run_pipeline(q, pais):
 
     db = Database()
     items = collect_items_parallel(q, pais=pais)
+    items = _filter_by_country(items, pais)
+    items = _filter_sports(items)
+
+    # Fallback: usar items existentes de la BD si no se recolectaron nuevos
+    if not items:
+        db_items = db.get_items_by_topic(q, pais=pais, limit=30)
+        if db_items:
+            items = db_items
+            logger.info(f"Usando {len(items)} items existentes de BD para '{q}' pais='{pais}'")
+        else:
+            db_items = db.get_items_by_topic(q, limit=30)
+            if db_items:
+                items = db_items
+                logger.info(f"Usando {len(items)} items existentes de BD para '{q}' (sin filtro de pais)")
+    # Filtrar deportes también en items de BD
+    if items:
+        items = _filter_sports(items)
+
     questions = QuestionAnalyzer(max_items=20, pais=pais).analyze_items(items)
+
+    # Fallback si hay menos de 5 preguntas: buscar en BD por tópico específico y luego base
+    topic_key = f"{q}_{pais}"
+    if len(questions) < 5:
+        for fb_topic in [topic_key, q]:
+            fb_qs = db.get_questions_by_topic(fb_topic, limit=30)
+            if fb_qs:
+                seen = set(q.get("question","").strip().lower() for q in questions)
+                for dq in fb_qs:
+                    txt = dq.get("question","").strip().lower()
+                    if txt not in seen and dq.get("confidence", 0) > 0.3:
+                        dq["source_type"] = dq.get("source_type") or "unknown"
+                        dq["source_name"] = dq.get("source_name") or "Base de datos"
+                        questions.append(dq)
+                        seen.add(txt)
+                logger.info(f"Fallback BD '{fb_topic}': {len(questions)} preguntas totales")
+                if len(questions) >= 5:
+                    break
+
+    # Filtrar preguntas por país incorrecto y deportes
+    if questions:
+        before = len(questions)
+        questions = [q for q in questions if _is_relevant_for_country(f"{q.get('question', '')} {q.get('content', '')}", pais)]
+        questions = [q for q in questions if not _SPORTS_CORE.search(f"{q.get('question', '')} {q.get('content', '')}")]
+        if len(questions) < before:
+            logger.info(f"Filtradas {before - len(questions)} preguntas por país/deportes")
+
     kw = TrendAnalyzer().analyze_items(items)["top_keywords"]
     save_to_db(db, items, questions, topic=q, pais=pais)
 
     try:
-        topic_key = f"{q}_{pais}"
         has_crit, comp_pct, val_insight = _enrich_with_value_layer(db, topic_key, questions)
     except Exception as e:
         logger.warning(f"⚠️ Capa de valor no inyectada: {e}")
@@ -583,7 +778,7 @@ def _cache_get(key):
             if time.time() < exp: return val
             del _CACHE_STORE[key]
     return None
-def _cache_set(key, val, ttl=900):
+def _cache_set(key, val, ttl=3600):
     with _CACHE_LOCK: _CACHE_STORE[key] = (val, time.time() + ttl)
 
 @dashboard_bp.route("/dashboard")
@@ -600,7 +795,7 @@ def dashboard():
 
     try:
         summary = run_pipeline(q, pais=pais)
-        _cache_set(key, summary, ttl=900)
+        _cache_set(key, summary, ttl=3600)  # Cache por 1 hora
         return render_template("dashboard.html", summary=summary)
     except Exception as e:
         logger.error(f"Pipeline falló para {q} ({pais}): {e}", exc_info=True)
