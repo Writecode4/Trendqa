@@ -76,6 +76,12 @@ def create_app():
     from trendqa.dashboard import dashboard_bp
     app.register_blueprint(dashboard_bp)
 
+    from trendqa.contact import contact_bp
+    app.register_blueprint(contact_bp)
+
+    from flask_cors import CORS
+    CORS(app, resources={r"/api/*": {"origins": "*"}})
+
 
     # Middleware para medir tiempo de respuesta
     @app.before_request
