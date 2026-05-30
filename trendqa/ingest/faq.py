@@ -93,7 +93,7 @@ class FAQIngestor:
     def fetch(self, **kwargs):  # ✅ Firma flexible: acepta cualquier kwarg
         """Obtiene FAQs con caché y límites estrictos."""
         # Extraer parámetros opcionales (sin romper si no existen)
-        limit = kwargs.get("limit", kwargs.get("max_results", 5))
+        limit = kwargs.get("limit", kwargs.get("max_results", 10))
         
         now = datetime.now()
         now_ts = now.timestamp()

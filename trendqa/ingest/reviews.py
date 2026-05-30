@@ -44,7 +44,7 @@ class ReviewsIngestor:
 
     def fetch(self, **kwargs):  # ✅ Firma flexible
         """Obtiene reviews con caché y límites estrictos."""
-        limit = kwargs.get("limit", kwargs.get("max_results", 5))
+        limit = kwargs.get("limit", kwargs.get("max_results", 10))
         
         # Reviews internas de ejemplo (reemplaza con tu lógica real si apunta a DB/archivo)
         base_reviews = [

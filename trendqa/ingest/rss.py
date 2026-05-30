@@ -65,7 +65,7 @@ class RSSIngestor:
 
     def fetch(self, **kwargs):
         """Obtiene artículos RSS con caché, timeout, país y filtro de relevancia."""
-        limit = kwargs.get("limit", kwargs.get("max_results", 10))
+        limit = kwargs.get("limit", kwargs.get("max_results", 15))
         if not self.query:
             return []
 

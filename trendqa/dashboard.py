@@ -23,6 +23,7 @@ from trendqa.ingest.reviews import ReviewsIngestor
 from trendqa.ingest.x import XIngestor
 from trendqa.ingest.mercadolibre import MercadoLibreIngestor
 from trendqa.ingest.google_news import GoogleNewsIngestor
+from trendqa.ingest.youtube import YouTubeIngestor
 
 # Procesadores
 from trendqa.processing.analyzer import QuestionAnalyzer, TrendAnalyzer, BrandExtractor, AnswerAnalyzer
@@ -70,7 +71,7 @@ def _fetch_safe(name, ingestor_cls, query, timeout=10, **kwargs):
         ingestor = ingestor_cls(query=query, **{k:v for k,v in kwargs.items() if k != 'timeout'})
         def _run_fetch():
             try:
-                return ingestor.fetch(**{k:v for k,v in kwargs.items() if k not in ('timeout', 'limit', 'max_results')})
+                return ingestor.fetch(**{k:v for k,v in kwargs.items() if k != 'timeout'})
             except TypeError:
                 return ingestor.fetch()
         with ThreadPoolExecutor(max_workers=1) as executor:
@@ -218,11 +219,12 @@ def collect_items_parallel(q, pais="paraguay", max_workers=4):
     seen_ids = set()
     for t in terms[:3]:
         tasks = [
-            ("Reddit", RedditIngestor, t, 5),
-            ("X", XIngestor, t, 3),
-            ("RSS", RSSIngestor, t, 5),
-            ("MercadoLibre", MercadoLibreIngestor, t, 5),
-            ("GoogleNews", GoogleNewsIngestor, t, 10),
+            ("Reddit", RedditIngestor, t, 10),
+            ("X", XIngestor, t, 8),
+            ("RSS", RSSIngestor, t, 10),
+            ("MercadoLibre", MercadoLibreIngestor, t, 10),
+            ("GoogleNews", GoogleNewsIngestor, t, 15),
+            ("YouTube", YouTubeIngestor, t, 10),
         ]
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {executor.submit(_fetch_safe, name, cls, t, lim, pais=pais): name for name, cls, _, lim in tasks}
@@ -236,8 +238,8 @@ def collect_items_parallel(q, pais="paraguay", max_workers=4):
                                 items.append(item)
                 except Exception as e:
                     logger.warning(f"Error en hilo de fuentes: {e}")
-        items.extend(_fetch_safe("FAQ", FAQIngestor, t, limit=3, timeout=5, pais=pais))
-        items.extend(_fetch_safe("Reviews", ReviewsIngestor, t, limit=3, timeout=5, pais=pais))
+        items.extend(_fetch_safe("FAQ", FAQIngestor, t, limit=10, timeout=10, pais=pais))
+        items.extend(_fetch_safe("Reviews", ReviewsIngestor, t, limit=10, timeout=10, pais=pais))
         if items:
             break
     try:

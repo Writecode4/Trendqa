@@ -53,7 +53,7 @@ class RedditIngestor:
 
     def fetch(self, **kwargs):
         """Obtiene posts de Reddit con parseo 100% defensivo."""
-        limit = kwargs.get("limit", kwargs.get("max_results", 10))
+        limit = kwargs.get("limit", kwargs.get("max_results", 15))
         if not self.query:
             return []
 
