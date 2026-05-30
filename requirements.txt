@@ -3,6 +3,8 @@ Flask==3.0.3
 gunicorn==22.0.0
 python-dotenv==1.0.1
 Werkzeug==3.0.3
+flask-caching==2.4.0
+flask-compress==1.24
 
 # HTTP & Parsing
 requests==2.32.3
@@ -13,6 +15,11 @@ urllib3==2.2.2
 # AI & Processing
 groq==0.9.0
 pytrends==4.9.2
+
+# Database
+pymysql==1.1.1
+sshtunnel==0.4.0
+paramiko==3.4.0
 
 # Utilidades
 python-dateutil==2.9.0.post0
