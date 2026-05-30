@@ -1,11 +1,15 @@
 import io
-import tempfile
+import os
+import uuid
 from pathlib import Path
 from flask import Blueprint, request, jsonify, render_template, redirect, url_for, send_file
 from trendqa.db import Database
 from trendqa.dashboard import get_cached_summary
 from services.pdf_export import PDFExporter
 
+
+PDF_DIR = Path("/tmp/pdfs")
+PDF_DIR.mkdir(parents=True, exist_ok=True)
 
 contact_bp = Blueprint("contact", __name__)
 
@@ -34,17 +38,29 @@ def contacto():
         buf = io.BytesIO()
         exporter.export_summary(summary, buf)
         buf.seek(0)
-        return send_file(
-            buf,
-            mimetype="application/pdf",
-            as_attachment=False,
-            download_name=f"trendqa_{topic}.pdf",
-        )
+
+        pdf_id = str(uuid.uuid4())
+        pdf_path = PDF_DIR / f"{pdf_id}.pdf"
+        pdf_path.write_bytes(buf.getvalue())
+
+        return render_template("contacto.html", pdf_id=pdf_id, ok="1")
 
     ok = request.args.get("ok")
     topic = request.args.get("topic", "")
     pais = request.args.get("pais", "paraguay")
     return render_template("contacto.html", ok=ok, topic=topic, pais=pais)
+
+
+@contact_bp.route("/pdf-view/<pdf_id>")
+def pdf_view(pdf_id):
+    pdf_path = PDF_DIR / f"{pdf_id}.pdf"
+    if not pdf_path.exists():
+        return "PDF no encontrado", 404
+    return send_file(
+        str(pdf_path),
+        mimetype="application/pdf",
+        as_attachment=False,
+    )
 
 
 @contact_bp.route("/api/contact", methods=["POST", "OPTIONS"])

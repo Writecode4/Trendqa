@@ -18,6 +18,12 @@
         .msg-warning a { color:#0496FF; }
         .btn { display:inline-block; padding:12px 24px; background:#AA0034; color:#fff; border:none; font-size:0.95rem; font-weight:600; cursor:pointer; text-align:center; }
         .btn:hover { background:#88002a; }
+        .modal-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:flex; align-items:center; justify-content:center; z-index:9999; }
+        .modal-box { background:#fff; width:90%; height:90%; display:flex; flex-direction:column; border-radius:4px; overflow:hidden; }
+        .modal-box embed { flex:1; border:none; }
+        .modal-close { display:flex; justify-content:flex-end; padding:8px 12px; background:#f8f9fa; }
+        .modal-close a { padding:6px 20px; background:#AA0034; color:#fff; text-decoration:none; font-size:0.85rem; font-weight:600; cursor:pointer; }
+        .modal-close a:hover { background:#88002a; }
     </style>
 </head>
 <body>
@@ -25,7 +31,8 @@
         <h2>Descargar informe PDF</h2>
         <p>Completa tus datos para recibir el informe.</p>
 
-        {% if ok and not no_pdf %}
+        {% if pdf_id %}
+        {% elif ok and not no_pdf %}
         <div class="msg-success">Gracias por registrarte. Pronto recibiras el enlace de descarga.</div>
         {% elif no_pdf %}
         <div class="msg-warning">No se encontro un informe disponible. Ve al <a href="/dashboard">dashboard</a> y genera un analisis primero.</div>
@@ -71,5 +78,16 @@
             <button type="submit" class="btn">Solicitar informe</button>
         </form>
     </div>
+
+    {% if pdf_id %}
+    <div class="modal-overlay" id="pdfModal">
+        <div class="modal-box">
+            <div class="modal-close">
+                <a href="/" onclick="event.preventDefault(); document.getElementById('pdfModal').style.display='none'; window.location.href='/';">Cerrar y volver al inicio</a>
+            </div>
+            <embed src="{{ url_for('contact.pdf_view', pdf_id=pdf_id) }}" type="application/pdf">
+        </div>
+    </div>
+    {% endif %}
 </body>
 </html>
