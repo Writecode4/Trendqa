@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contacto - TrendQA</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container" style="max-width:600px;margin:40px auto;padding:0 20px;">
+        <h2 style="color:#FFFDFD;">Descargar informe PDF</h2>
+        <p style="color:#CBD2D0;">Completa tus datos para recibir el informe.</p>
+
+        {% if ok and not no_pdf %}
+        <div style="background:linear-gradient(135deg,rgba(4,150,255,0.12),rgba(4,150,255,0.03));border:1px solid rgba(4,150,255,0.3);color:#0496FF;padding:12px 16px;margin-bottom:20px;">
+            Gracias por registrarte. Pronto recibiras el enlace de descarga.
+        </div>
+        {% elif no_pdf %}
+        <div style="background:linear-gradient(135deg,rgba(203,210,208,0.08),rgba(203,210,208,0.02));border:1px solid rgba(203,210,208,0.2);color:#CBD2D0;padding:12px 16px;margin-bottom:20px;">
+            No se encontro un informe disponible. Ve al <a href="/dashboard" style="color:#0496FF;">dashboard</a> y genera un analisis primero.
+        </div>
+        {% endif %}
+
+        <form method="POST" action="/contacto">
+            <input type="hidden" name="topic" value="{{ topic }}">
+            <input type="hidden" name="pais" value="{{ pais }}">
+
+            <div style="margin-bottom:15px;">
+                <label style="color:#CBD2D0;display:block;margin-bottom:6px;font-size:0.85rem;">Nombre completo *</label>
+                <input type="text" name="nombre_completo" required
+                       style="width:100%;padding:12px 16px;border:1px solid #334155;border-radius:0;background:#0f172a;color:#e2e8f0;font-size:0.95rem;box-sizing:border-box;">
+            </div>
+
+            <div style="margin-bottom:15px;">
+                <label style="color:#CBD2D0;display:block;margin-bottom:6px;font-size:0.85rem;">Email corporativo *</label>
+                <input type="email" name="email_corporativo" required
+                       style="width:100%;padding:12px 16px;border:1px solid #334155;border-radius:0;background:#0f172a;color:#e2e8f0;font-size:0.95rem;box-sizing:border-box;">
+            </div>
+
+            <div style="margin-bottom:15px;">
+                <label style="color:#CBD2D0;display:block;margin-bottom:6px;font-size:0.85rem;">Telefono</label>
+                <input type="tel" name="telefono"
+                       style="width:100%;padding:12px 16px;border:1px solid #334155;border-radius:0;background:#0f172a;color:#e2e8f0;font-size:0.95rem;box-sizing:border-box;">
+            </div>
+
+            <div style="margin-bottom:15px;">
+                <label style="color:#CBD2D0;display:block;margin-bottom:6px;font-size:0.85rem;">Industria</label>
+                <select name="industria"
+                        style="width:100%;padding:12px 16px;border:1px solid #334155;border-radius:0;background:#0f172a;color:#e2e8f0;font-size:0.95rem;box-sizing:border-box;">
+                    <option value="">Selecciona...</option>
+                    <option value="ecommerce">E-commerce</option>
+                    <option value="fintech">Fintech</option>
+                    <option value="logistica">Logistica</option>
+                    <option value="retail">Retail</option>
+                    <option value="tecnologia">Tecnologia</option>
+                    <option value="otro">Otro</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom:20px;">
+                <label style="color:#CBD2D0;display:block;margin-bottom:6px;font-size:0.85rem;">Mensaje</label>
+                <textarea name="mensaje" rows="4"
+                          style="width:100%;padding:12px 16px;border:1px solid #334155;border-radius:0;background:#0f172a;color:#e2e8f0;font-size:0.95rem;box-sizing:border-box;"></textarea>
+            </div>
+
+            <button type="submit" class="btn"
+                    style="width:100%;padding:12px 18px;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:0;font-size:0.95rem;font-weight:600;cursor:pointer;">
+                Solicitar informe
+            </button>
+        </form>
+    </div>
+</body>
+</html>
