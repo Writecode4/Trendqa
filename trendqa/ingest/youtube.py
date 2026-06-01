@@ -20,6 +20,17 @@ def _cached_get(url, headers, timeout=10):
     except: pass
     return None, False
 
+_ECOMMERCE_SIGNALS = [
+    "envío", "courier", "delivery", "pedido", "compra", "pago", "tarjeta",
+    "devolución", "garantía", "estafa", "confiable", "seguro", "fraude",
+    "reseña", "opinión", "reclamo", "descuento", "oferta", "precio",
+    "marketplace", "tienda", "online", "ecommerce", "e-commerce",
+    "mercado libre", "mercadolibre", "shopify", "amazon", "producto",
+    "proveedor", "marca", "vender", "vendedor", "cliente", "servicio",
+    "logística", "aduana", "importación", "tracking", "seguimiento",
+    "costo", "calidad", "garantía", "soporte", "atención",
+]
+
 class YouTubeIngestor:
     def __init__(self, query=None, **kwargs):
         self.query = query or ""
@@ -27,6 +38,12 @@ class YouTubeIngestor:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept-Language": "es-419,es;q=0.9",
         }
+
+    def _is_relevant(self, title, author, description=""):
+        text = f"{title} {author} {description}".lower()
+        if self.query.lower() in text:
+            return True
+        return any(sig in text for sig in _ECOMMERCE_SIGNALS)
 
     def fetch(self, **kwargs):
         limit = kwargs.get("limit", kwargs.get("max_results", 10))
@@ -57,12 +74,16 @@ class YouTubeIngestor:
                     vid_id = renderer.get("videoId", "")
                     author_runs = renderer.get("ownerText", {}).get("runs", [])
                     author = "".join(r.get("text", "") for r in author_runs) if author_runs else "unknown"
+                    desc_runs = renderer.get("detailedMetadataSnippets", [{}])
+                    snippet = "".join(r.get("text","") for r in (desc_runs[0].get("snippetText",{}).get("runs",[]))) if desc_runs else ""
+                    if not self._is_relevant(title, author, snippet):
+                        continue
                     length = renderer.get("lengthText", {}).get("simpleText", "")
                     views = renderer.get("viewCountText", {}).get("simpleText", "")
                     items.append({
                         "id": f"yt_{vid_id}" if vid_id else f"yt_{hashlib.md5(title.encode()).hexdigest()[:10]}",
                         "title": title[:200],
-                        "content": f"Duración: {length} - {views}".strip()[:250],
+                        "content": f"{snippet[:200]} - {views}".strip()[:250],
                         "url": f"https://youtube.com/watch?v={vid_id}",
                         "author": author,
                         "created_utc": now.timestamp(),
