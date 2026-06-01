@@ -1,5 +1,9 @@
 {
-  "sports": [],
+  "sports": [
+    "Jim Courier",
+    "Big Four",
+    "Alcaraz.*Sinner"
+  ],
   "crime": [
     "detienen a .* por (vender|transportar|llevar) (droga|drogar|drogas)"
   ]

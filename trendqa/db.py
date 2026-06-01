@@ -12,9 +12,21 @@ class Database:
         self.user = user or os.getenv("DB_USER", "root")
         self.password = password or os.getenv("DB_PASSWORD", "")
         self.database = database or os.getenv("DB_NAME", "trendqa")
+        self._ensure_tunnel()
         self._init_tables()
 
+    @staticmethod
+    def _ensure_tunnel():
+        try:
+            from flask import current_app
+            ensure = getattr(current_app, 'tunnel_provider', None)
+            if ensure:
+                ensure()
+        except Exception:
+            pass
+
     def _get_conn(self):
+        self._ensure_tunnel()
         conn = pymysql.connect(
             host=self.host,
             port=self.port,
@@ -23,6 +35,7 @@ class Database:
             database=self.database,
             cursorclass=DictCursor,
             charset="utf8mb4",
+            connect_timeout=10,
         )
         return conn
 
