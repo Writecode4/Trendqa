@@ -27,12 +27,9 @@ def create_app():
     # Túnel SSH para base de datos remota
     from sshtunnel import SSHTunnelForwarder
     import paramiko
-    import threading
 
     ENV = os.getenv('FLASK_ENV', 'development')
-    _tunnel = None
-    _tunnel_lock = threading.Lock()
-    _tunnel_stop_event = threading.Event()
+    tunnel = None
 
     ssh_pkey = os.getenv('SSH_PRIVATE_KEY')
     if ssh_pkey:
@@ -50,58 +47,20 @@ def create_app():
     else:
         ssh_pkey = paramiko.RSAKey.from_private_key_file(os.getenv('SSH_KEY_PATH'))
 
-    def _start_tunnel():
-        global _tunnel
-        t = SSHTunnelForwarder(
-            (os.getenv('SSH_HOST'), int(os.getenv('SSH_PORT'))),
-            ssh_username=os.getenv('SSH_USER'),
-            ssh_pkey=ssh_pkey,
-            remote_bind_address=('127.0.0.1', 3306),
-            ssh_keepalive_interval=30,
-            set_socket_timeout=15,
-        )
-        t.start()
-        if t.transport is not None:
-            t.transport.set_keepalive(30)
-        _tunnel = t
-        os.environ['DB_PORT'] = str(_tunnel.local_bind_port)
-        app.logger.info("Túnel SSH iniciado correctamente")
-        return t
+    tunnel = SSHTunnelForwarder(
+        (os.getenv('SSH_HOST'), int(os.getenv('SSH_PORT'))),
+        ssh_username=os.getenv('SSH_USER'),
+        ssh_pkey=ssh_pkey,
+        remote_bind_address=('127.0.0.1', 3306)
+    )
+    tunnel.start()
 
-    def _ensure_tunnel():
-        with _tunnel_lock:
-            if _tunnel is None or not _tunnel.is_active:
-                app.logger.warning("Túnel SSH caído — reconectando...")
-                try:
-                    if _tunnel:
-                        _tunnel.stop()
-                except Exception:
-                    pass
-                _start_tunnel()
-
-    def _tunnel_watchdog():
-        while not _tunnel_stop_event.is_set():
-            _tunnel_stop_event.wait(60)
-            try:
-                _ensure_tunnel()
-            except Exception as e:
-                app.logger.error(f"Watchdog túnel falló: {e}")
-
-    _start_tunnel()
-    watchdog = threading.Thread(target=_tunnel_watchdog, daemon=True)
-    watchdog.start()
-
-    app.tunnel_provider = _ensure_tunnel
+    os.environ['DB_PORT'] = str(tunnel.local_bind_port)
+    app.tunnel = tunnel
 
     def close_tunnel():
-        _tunnel_stop_event.set()
-        with _tunnel_lock:
-            if _tunnel:
-                try:
-                    _tunnel.stop()
-                except Exception:
-                    pass
-                _tunnel = None
+        if tunnel:
+            tunnel.stop()
 
     atexit.register(close_tunnel)
 
