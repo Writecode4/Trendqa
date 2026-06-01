@@ -31,33 +31,29 @@ def create_app():
     ENV = os.getenv('FLASK_ENV', 'development')
     tunnel = None
 
-    if ENV == 'production':
-        private_key_str = os.getenv('SSH_PRIVATE_KEY').replace('\\n', '\n')
-        key_file = io.StringIO(private_key_str)
+    ssh_pkey = os.getenv('SSH_PRIVATE_KEY')
+    if ssh_pkey:
+        ssh_pkey = ssh_pkey.replace('\\n', '\n')
+        key_file = io.StringIO(ssh_pkey)
         for KeyClass in (paramiko.Ed25519Key, paramiko.RSAKey, paramiko.ECDSAKey):
             try:
                 key_file.seek(0)
-                private_key = KeyClass.from_private_key(key_file)
+                ssh_pkey = KeyClass.from_private_key(key_file)
                 break
             except paramiko.SSHException:
                 continue
         else:
             raise paramiko.SSHException("No se pudo cargar la clave SSH privada")
-        tunnel = SSHTunnelForwarder(
-            (os.getenv('SSH_HOST'), int(os.getenv('SSH_PORT'))),
-            ssh_username=os.getenv('SSH_USER'),
-            ssh_pkey=private_key,
-            remote_bind_address=('127.0.0.1', 3306)
-        )
-        tunnel.start()
     else:
-        tunnel = SSHTunnelForwarder(
-            (os.getenv('SSH_HOST'), int(os.getenv('SSH_PORT'))),
-            ssh_username=os.getenv('SSH_USER'),
-            ssh_pkey=paramiko.RSAKey.from_private_key_file(os.getenv('SSH_KEY_PATH')),
-            remote_bind_address=('127.0.0.1', 3306)
-        )
-        tunnel.start()
+        ssh_pkey = paramiko.RSAKey.from_private_key_file(os.getenv('SSH_KEY_PATH'))
+
+    tunnel = SSHTunnelForwarder(
+        (os.getenv('SSH_HOST'), int(os.getenv('SSH_PORT'))),
+        ssh_username=os.getenv('SSH_USER'),
+        ssh_pkey=ssh_pkey,
+        remote_bind_address=('127.0.0.1', 3306)
+    )
+    tunnel.start()
 
     os.environ['DB_PORT'] = str(tunnel.local_bind_port)
     app.tunnel = tunnel
