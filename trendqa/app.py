@@ -57,8 +57,6 @@ def create_app():
             ssh_username=os.getenv('SSH_USER'),
             ssh_pkey=ssh_pkey,
             remote_bind_address=('127.0.0.1', 3306),
-            ssh_keepalive_interval=30,
-            set_socket_timeout=15,
         )
         t.start()
         if t.transport is not None:
