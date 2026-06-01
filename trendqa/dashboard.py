@@ -24,6 +24,9 @@ from trendqa.ingest.x import XIngestor
 from trendqa.ingest.mercadolibre import MercadoLibreIngestor
 from trendqa.ingest.google_news import GoogleNewsIngestor
 from trendqa.ingest.youtube import YouTubeIngestor
+from trendqa.ingest.youtube_comments import YouTubeCommentsIngestor
+from trendqa.ingest.shopee import ShopeeIngestor
+from trendqa.ingest.tiktok import TikTokIngestor
 
 # Procesadores
 from trendqa.processing.analyzer import QuestionAnalyzer, TrendAnalyzer, BrandExtractor, AnswerAnalyzer
@@ -321,6 +324,9 @@ def collect_items_parallel(q, pais="paraguay", max_workers=4):
             ("MercadoLibre", MercadoLibreIngestor, t, 10),
             ("GoogleNews", GoogleNewsIngestor, t, 15),
             ("YouTube", YouTubeIngestor, t, 10),
+            ("YouTubeComentarios", YouTubeCommentsIngestor, t, 12),
+            ("Shopee", ShopeeIngestor, t, 10),
+            ("TikTok", TikTokIngestor, t, 8),
         ]
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {executor.submit(_fetch_safe, name, cls, t, lim, pais=pais): name for name, cls, _, lim in tasks}
