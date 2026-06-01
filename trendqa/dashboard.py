@@ -344,19 +344,6 @@ def collect_items_parallel(q, pais="paraguay", max_workers=4):
         items.extend(_fetch_safe("Reviews", ReviewsIngestor, t, limit=10, timeout=10, pais=pais))
         if items:
             break
-    try:
-        t = terms[0] if terms else q
-        trends = GoogleTrendsIngestor(pais=pais).get_trend_bundle(t)
-        now = datetime.now().isoformat()
-        items.append({
-            "id": f"trends_{q}", "title": f"Tendencias: {q}",
-            "content": f"Términos relacionados: {', '.join(trends.get('related_top', [])[:5])}. Términos en ascenso: {', '.join(trends.get('related_rising', [])[:5])}. Autocompletado: {', '.join(trends.get('autocomplete', [])[:5])}.",
-            "url": None, "author": None, "created_utc": None, "created_at": now,
-            "raw_json": None, "item_type": "trends_bundle",
-            "source_name": "Google Trends", "source_type": "trends",
-        })
-    except Exception as e:
-        logger.warning(f"⚠️ Google Trends falló: {e}")
     return items
 
 def save_to_db(db, items, questions, topic="", pais="paraguay"):
@@ -806,6 +793,22 @@ def run_pipeline(q, pais):
     if items:
         items = _filter_sports(items)
         items = _filter_crime(items)
+
+    # Google Trends se agrega DESPUÉS del fallback para no bloquearlo
+    try:
+        terms = expand_terms(q)
+        t = terms[0] if terms else q
+        trends = GoogleTrendsIngestor(pais=pais).get_trend_bundle(t)
+        now = datetime.now().isoformat()
+        items.append({
+            "id": f"trends_{q}", "title": f"Tendencias: {q}",
+            "content": f"Términos relacionados: {', '.join(trends.get('related_top', [])[:5])}. Términos en ascenso: {', '.join(trends.get('related_rising', [])[:5])}. Autocompletado: {', '.join(trends.get('autocomplete', [])[:5])}.",
+            "url": None, "author": None, "created_utc": None, "created_at": now,
+            "raw_json": None, "item_type": "trends_bundle",
+            "source_name": "Google Trends", "source_type": "trends",
+        })
+    except Exception as e:
+        logger.warning(f"⚠️ Google Trends falló: {e}")
 
     questions = QuestionAnalyzer(max_items=20, pais=pais).analyze_items(items)
 
