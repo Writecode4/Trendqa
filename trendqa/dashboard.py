@@ -326,7 +326,7 @@ _SPORTS_PATTERNS = [
     r"\bliga\s+(?:espa[ñn]ola|inglesa|francesa|alemana|italiana|argentina|mexicana|colombiana|chilena|peruana|paraguaya)\b",
     r"\bcampeonato\s+(?:nacional|mundial|latinoamericano|sudamericano|europeo)\b",
     r"\bcancha\b", r"\bestadio\b", r"\b[áa]rbitro\b",
-    r"\bdeportivo?\b", r"\bdeportiva?\b",
+    r"\bdeportivo?\b", r"\bdeportiva?\b", r"\bdeportista\b",
     r"\bselecci[óo]n\s+(?:nacional|argentina|mexicana|colombiana|paraguaya|chilena|peruana|brasile[ñn]a)\b",
     r"\b(?:copa|trofeo|campe[óo]n|subcampe[óo]n|semifinal|cuartos\s+de\s+final)\b",
     r"\bpichichi\b", r"\bgoleo\b",

@@ -230,7 +230,7 @@ BRAND_KEYWORDS = [
     "bancard", "visa", "mastercard", "paypal", "cripto", "binance",
     "personal", "tigo", "claro", "vox", "wom", "movistar", "entel",
     "sodimac", "easy", "stock", "biggie", "superseis",
-    "pedidosya", "bigbox", "courier", "dhl", "fedex", "ups",
+    "pedidosya", "bigbox", "dhl", "fedex", "ups",
     "paraguay", "argentina", "mexico", "colombia", "brasil",
     "instagram", "facebook", "whatsapp", "google", "apple", "samsung",
     "xiaomi", "lenovo", "hp", "dell", "asus", "acer", "nike", "adidas", "puma",
@@ -278,7 +278,7 @@ class BrandExtractor:
         )[:3000]
 
         if self.client:
-            prompt = f"""De los siguientes textos sobre e-commerce en {self.pais}, extraé las 2 marcas o empresas más mencionadas. Respondé SOLO con un JSON array de strings, ej: ["Courier A", "Bancard"]. Si no hay marcas claras, devolvé [].
+            prompt = f"""De los siguientes textos sobre e-commerce en {self.pais}, extraé las 2 marcas o empresas más mencionadas. Respondé SOLO con un JSON array de strings, ej: ["Mercado Libre", "Bancard"]. Si no hay marcas claras, devolvé [].
 
 Textos: {text}
 """
