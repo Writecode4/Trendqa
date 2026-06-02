@@ -5,6 +5,7 @@ import re
 import time
 from collections import Counter
 from groq import Groq, RateLimitError
+from trendqa.dashboard import _mentioned_geo
 
 from .normalize import TextNormalizer
 
