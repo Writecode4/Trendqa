@@ -981,6 +981,11 @@ def dashboard():
     topic_key = f"{q}_{pais}"
     try:
         questions = db.get_questions_by_topic(topic_key, limit=100)
+        if len(questions) < 5:
+            extra = db.get_questions_by_topic(f"{q}_otros_latam", limit=20)
+            for eq in extra:
+                eq["_fallback"] = True
+            questions.extend(extra)
         items = db.get_items_by_topic(q, pais=pais, limit=50)
         top_keywords = []
         kw = TrendAnalyzer().analyze_items(items) if items else {"top_keywords": []}

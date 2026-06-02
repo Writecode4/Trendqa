@@ -140,7 +140,7 @@
         {% for item in items %}
         <div class="q-card trend-border-{{ item.trend|default('stable') }} {% if item.action and item.action.team %}team-bg-{{ item.action.team|lower }}{% endif %}" style="flex-direction:column;align-items:stretch;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
-            <p class="q-text">{{ item.question }}</p>
+            <p class="q-text">{{ item.question }}{% if item._fallback %} <span class="tag-muted" style="font-size:0.7rem;">LATAM</span>{% endif %}</p>
             <div class="q-meta">
               {% if item.churn and item.churn.nivel == 'alto' %}<span class="tag-danger">fuga alto</span>{% endif %}
               {% if item.respuestas and item.respuestas.hay_respuestas %}<span class="tag-info">{{ item.respuestas.cantidad_comentarios }} resp</span>{% endif %}
