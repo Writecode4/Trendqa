@@ -1,20 +1,79 @@
 import os
+import time
+import socket
+import logging
+import queue
+import threading
+from functools import wraps
+
 import pymysql
 from pymysql.cursors import DictCursor
 from datetime import datetime, timedelta
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
+POOL_SIZE = 5
+MAX_RETRIES = 5
+RETRY_DELAY = 1
+
+
+def with_conn_retry(fn):
+    @wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        last_exc = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                return fn(self, *args, **kwargs)
+            except (pymysql.err.OperationalError, pymysql.err.InterfaceError) as e:
+                last_exc = e
+                logger.warning(f"DB error on {fn.__name__} (attempt {attempt+1}/{MAX_RETRIES}): {e}")
+                self._recycle_all()
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(RETRY_DELAY * (attempt + 1))
+        raise last_exc
+    return wrapper
+
 
 class Database:
+    _tables_initialized = False
+    _init_lock = threading.Lock()
+
     def __init__(self, host=None, port=None, user=None, password=None, database=None):
         self.host = host or os.getenv("DB_HOST", "localhost")
         self.port = port or int(os.getenv("DB_PORT", 3306))
         self.user = user or os.getenv("DB_USER", "root")
         self.password = password or os.getenv("DB_PASSWORD", "")
         self.database = database or os.getenv("DB_NAME", "trendqa")
-        self._init_tables()
+        self._pool = queue.Queue(maxsize=POOL_SIZE)
+        self._pool_size = 0
+        self._pool_lock = threading.Lock()
+        self._ensure_tunnel()
+        self._init_tables_once()
+
+    def _ensure_tunnel(self):
+        from trendqa.tunnel import tunnel_manager
+        tunnel_manager.ensure_alive()
+
+    def _init_tables_once(self):
+        if Database._tables_initialized:
+            return
+        with Database._init_lock:
+            if Database._tables_initialized:
+                return
+            self._init_tables()
+            Database._tables_initialized = True
 
     def _get_conn(self):
+        try:
+            conn = self._pool.get_nowait()
+            if self._ping(conn):
+                return conn
+        except queue.Empty:
+            pass
+        return self._create_conn()
+
+    def _create_conn(self):
         conn = pymysql.connect(
             host=self.host,
             port=self.port,
@@ -23,14 +82,72 @@ class Database:
             database=self.database,
             cursorclass=DictCursor,
             charset="utf8mb4",
+            connect_timeout=30,
+            autocommit=True,
         )
+        self._set_tcp_keepalive(conn)
         return conn
+
+    def _set_tcp_keepalive(self, conn):
+        try:
+            sock = conn._sock
+            if sock is None:
+                return
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            if hasattr(socket, "TCP_KEEPIDLE"):
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 30)
+            if hasattr(socket, "TCP_KEEPINTVL"):
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 10)
+            if hasattr(socket, "TCP_KEEPCNT"):
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
+        except Exception:
+            pass
+
+    def _ping(self, conn):
+        try:
+            conn.ping(reconnect=False)
+            return True
+        except Exception:
+            return False
+
+    def _recycle_all(self):
+        from trendqa.tunnel import tunnel_manager
+        tunnel_manager.ensure_alive()
+        while True:
+            try:
+                conn = self._pool.get_nowait()
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+            except queue.Empty:
+                break
+        with self._pool_lock:
+            self._pool_size = 0
+
+    def _return_conn(self, conn):
+        if conn is None:
+            return
+        try:
+            if self._ping(conn):
+                try:
+                    self._pool.put_nowait(conn)
+                    return
+                except queue.Full:
+                    pass
+        except Exception:
+            pass
+        try:
+            conn.close()
+        except Exception:
+            pass
 
     def _execute(self, conn, sql, params=None):
         with conn.cursor() as cur:
             cur.execute(sql, params or ())
             return cur
 
+    @with_conn_retry
     def _init_tables(self):
         conn = self._get_conn()
         try:
@@ -118,8 +235,9 @@ class Database:
             """)
             conn.commit()
         finally:
-            conn.close()
+            self._return_conn(conn)
 
+    @with_conn_retry
     def ensure_source(self, name, source_type, base_url=None):
         conn = self._get_conn()
         try:
@@ -138,8 +256,9 @@ class Database:
             row = cur.fetchone()
             return row["id"] if row else None
         finally:
-            conn.close()
+            self._return_conn(conn)
 
+    @with_conn_retry
     def save_item(self, item):
         conn = self._get_conn()
         try:
@@ -158,8 +277,9 @@ class Database:
             conn.commit()
             return item.get("id")
         finally:
-            conn.close()
+            self._return_conn(conn)
 
+    @with_conn_retry
     def mark_item_processed(self, item_id):
         conn = self._get_conn()
         try:
@@ -169,8 +289,9 @@ class Database:
             )
             conn.commit()
         finally:
-            conn.close()
+            self._return_conn(conn)
 
+    @with_conn_retry
     def save_question(self, item_id, question, category, confidence=None, model_used=None, topic=""):
         conn = self._get_conn()
         try:
@@ -180,8 +301,9 @@ class Database:
             """, (item_id, question, category, confidence, model_used, topic))
             conn.commit()
         finally:
-            conn.close()
+            self._return_conn(conn)
 
+    @with_conn_retry
     def save_trend_term(self, keyword, related_top=None, related_rising=None, autocomplete=None, interest_over_time=None, geo="PY"):
         conn = self._get_conn()
         try:
@@ -191,8 +313,9 @@ class Database:
             """, (keyword, related_top, related_rising, autocomplete, interest_over_time, geo))
             conn.commit()
         finally:
-            conn.close()
+            self._return_conn(conn)
 
+    @with_conn_retry
     def save_report(self, topic, period_label, summary_json):
         conn = self._get_conn()
         try:
@@ -202,8 +325,9 @@ class Database:
             """, (topic, period_label, summary_json))
             conn.commit()
         finally:
-            conn.close()
+            self._return_conn(conn)
 
+    @with_conn_retry
     def log_step(self, step, status, message=None):
         conn = self._get_conn()
         try:
@@ -213,8 +337,9 @@ class Database:
             )
             conn.commit()
         finally:
-            conn.close()
+            self._return_conn(conn)
 
+    @with_conn_retry
     def get_unprocessed_items(self):
         conn = self._get_conn()
         try:
@@ -223,8 +348,9 @@ class Database:
             )
             return cur.fetchall()
         finally:
-            conn.close()
+            self._return_conn(conn)
 
+    @with_conn_retry
     def get_all_questions_with_items(self):
         conn = self._get_conn()
         try:
@@ -237,8 +363,9 @@ class Database:
             """)
             return cur.fetchall()
         finally:
-            conn.close()
+            self._return_conn(conn)
 
+    @with_conn_retry
     def get_items_by_topic(self, topic, pais=None, limit=50):
         conn = self._get_conn()
         try:
@@ -262,8 +389,9 @@ class Database:
                 """, (topic, limit))
             return cur.fetchall()
         finally:
-            conn.close()
+            self._return_conn(conn)
 
+    @with_conn_retry
     def get_questions_by_topic(self, topic, limit=100):
         conn = self._get_conn()
         try:
@@ -278,8 +406,9 @@ class Database:
             """, (topic, limit))
             return cur.fetchall()
         finally:
-            conn.close()
+            self._return_conn(conn)
 
+    @with_conn_retry
     def get_latest_report(self, topic=None):
         conn = self._get_conn()
         try:
@@ -297,8 +426,9 @@ class Database:
                 return (row["summary_json"], row["generated_at"])
             return None
         finally:
-            conn.close()
+            self._return_conn(conn)
 
+    @with_conn_retry
     def get_question_trends(self, topic="", recent_days=30):
         recent = {}
         older = {}
@@ -318,9 +448,10 @@ class Database:
             for row in cur.fetchall():
                 older[row["question"]] = row["cnt"]
         finally:
-            conn.close()
+            self._return_conn(conn)
         return recent, older
 
+    @with_conn_retry
     def get_trend_terms(self, limit=50):
         conn = self._get_conn()
         try:
@@ -330,8 +461,9 @@ class Database:
             )
             return cur.fetchall()
         finally:
-            conn.close()
+            self._return_conn(conn)
 
+    @with_conn_retry
     def get_category_counts(self, topic):
         conn = self._get_conn()
         try:
@@ -341,8 +473,9 @@ class Database:
             )
             return {row["category"]: row["cnt"] for row in cur.fetchall()}
         finally:
-            conn.close()
+            self._return_conn(conn)
 
+    @with_conn_retry
     def save_contact(self, nombre_completo, email_corporativo, telefono=None, industria=None, mensaje=None):
         conn = self._get_conn()
         try:
@@ -352,8 +485,9 @@ class Database:
             """, (nombre_completo, email_corporativo, telefono, industria, mensaje))
             conn.commit()
         finally:
-            conn.close()
+            self._return_conn(conn)
 
+    @with_conn_retry
     def get_contacts(self, limit=50):
         conn = self._get_conn()
         try:
@@ -363,8 +497,9 @@ class Database:
             )
             return cur.fetchall()
         finally:
-            conn.close()
+            self._return_conn(conn)
 
+    @with_conn_retry
     def prune_old_data(self, days=90):
         conn = self._get_conn()
         try:
@@ -376,4 +511,4 @@ class Database:
             self._execute(conn, "DELETE FROM processing_log WHERE created_at < %s", (cutoff,))
             conn.commit()
         finally:
-            conn.close()
+            self._return_conn(conn)

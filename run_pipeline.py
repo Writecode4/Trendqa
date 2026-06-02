@@ -20,6 +20,7 @@ load_dotenv(BASE_DIR / ".env")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("run_pipeline")
 
+from trendqa.tunnel import tunnel_manager
 from trendqa.db import Database
 from trendqa.processing.analyzer import BatchQuestionAnalyzer, TrendAnalyzer, BrandExtractor
 
@@ -166,6 +167,7 @@ def save_batch(db, items, questions, topic):
 
 def run():
     logger.info("=== Iniciando pipeline LATAM ===")
+    tunnel_manager.start()
     db = Database()
     db.prune_old_data(days=90)
     analyzer = BatchQuestionAnalyzer()
