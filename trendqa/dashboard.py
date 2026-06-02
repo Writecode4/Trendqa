@@ -905,13 +905,30 @@ def dashboard():
     if cached:
         return render_template("dashboard.html", summary=cached)
 
+    db = Database()
+    topic_key = f"{q}_{pais}"
     try:
-        summary = run_pipeline(q, pais=pais)
-        _cache_set(key, summary, ttl=3600)  # Cache por 1 hora
+        questions = db.get_questions_by_topic(topic_key, limit=100)
+        items = db.get_items_by_topic(q, pais=pais, limit=50)
+        top_keywords = []
+        kw = TrendAnalyzer().analyze_items(items) if items else {"top_keywords": []}
+        top_keywords = kw["top_keywords"]
+        summary = build_summary(q, items, questions, db, top_keywords, pais=pais)
+        summary["top_brands"] = BrandExtractor().extract(items) if items else []
+        try:
+            has_crit, comp_pct, val_insight = _enrich_with_value_layer(db, topic_key, questions)
+        except Exception:
+            has_crit, comp_pct, val_insight = False, 0, {"cause_summary": "Enriquecimiento no disponible."}
+        summary["has_critical_signal"] = has_crit
+        summary["value_completeness"] = comp_pct
+        summary["value_insight"] = val_insight
+        summary["api_enabled"] = False
+        summary["alerts"] = _generate_alerts(questions, topic_key, db)
+        _cache_set(key, summary, ttl=3600)
         return render_template("dashboard.html", summary=summary)
     except Exception as e:
-        logger.error(f"Pipeline falló para {q} ({pais}): {e}", exc_info=True)
-        empty = {"topic": q, "pais": pais, "error": True, "message": "Error temporal.",
+        logger.error(f"Error leyendo datos para {q} ({pais}): {e}", exc_info=True)
+        empty = {"topic": q, "pais": pais, "error": True, "message": "Sin datos. Ejecutá el pipeline manualmente.",
             "total_questions": 0, "categories": {}, "sources": {}, "top_keywords": [],
             "top_items": [], "top_questions": [], "grouped_questions": {},
             "churn_questions": [], "anexo_fuentes": [], "oportunidades": [],

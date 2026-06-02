@@ -1,5 +1,5 @@
 from .db import Database
-from .processing.analyzer import TrendAnalyzer, QuestionAnalyzer
+from .processing.analyzer import TrendAnalyzer, QuestionAnalyzer, BatchQuestionAnalyzer
 from .processing.reporter import ReportGenerator
 from .ingest.reddit import RedditIngestor
 from .ingest.rss import RSSIngestor
@@ -11,6 +11,7 @@ __all__ = [
     "Database",
     "TrendAnalyzer",
     "QuestionAnalyzer",
+    "BatchQuestionAnalyzer",
     "ReportGenerator",
     "RedditIngestor",
     "RSSIngestor",

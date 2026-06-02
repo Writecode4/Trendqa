@@ -18,6 +18,14 @@ reports/
 .vscode/
 .idea/
 
+# Respaldo / backup
+*.bak
+*.backup
+*.resp
+*.resp2
+*.resp3
+*.resp4
+
 # OS
 Thumbs.db
 .DS_Store

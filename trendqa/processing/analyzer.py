@@ -384,3 +384,172 @@ Respondé SOLO con un JSON:
             "resumen": f"{len(comments)} comentarios, tono {sent}",
             "cantidad_comentarios": len(comments),
         }
+
+
+class BatchQuestionAnalyzer:
+    CATEGORIES = (
+        "logistica_envios", "pagos_financiacion", "experiencia_compra",
+        "confianza_seguridad", "plataformas_canales", "marketing_descubrimiento",
+        "marcas_proveedores", "otros"
+    )
+
+    PAISES_LATAM = {"argentina", "brasil", "colombia", "mexico", "paraguay"}
+
+    CAT_DESC = {
+        "experiencia_compra": "pedidos, compras, devoluciones, garantia, rastreo, reclamos, cambios, soporte post-venta",
+        "pagos_financiacion": "metodos de pago, tarjetas, cuotas, financiacion, billeteras digitales, seguridad en pagos",
+        "confianza_seguridad": "confiabilidad de tiendas, estafas, resenas falsas, verificacion, reputacion online",
+        "plataformas_canales": "marketplaces, tienda propia, Instagram, Facebook, Shopify, MercadoLibre, donde vender",
+        "logistica_envios": "costos, tiempos, cobertura, seguimiento de envios, couriers, puntos de entrega, aduana",
+        "marketing_descubrimiento": "ofertas, descuentos, promociones, comparacion de precios, cupones, liquidacion",
+        "marcas_proveedores": "marcas mencionadas, proveedores, fabricantes, distribuidores, tiendas especificas",
+        "otros": "temas no cubiertos en las categorias anteriores",
+    }
+
+    def __init__(self):
+        api_key = os.getenv("GROQ_API_KEY")
+        self.client = None
+        self.model = None
+        if api_key:
+            try:
+                self.client = Groq(api_key=api_key)
+                self.model = "llama-3.3-70b-versatile"
+            except Exception:
+                pass
+
+    def analyze_batch(self, items, category, batch_size=30):
+        if not items:
+            return []
+        results = []
+        for i in range(0, len(items), batch_size):
+            chunk = items[i:i + batch_size]
+            questions = self._analyze_chunk(chunk, category)
+            results.extend(questions)
+            if i + batch_size < len(items):
+                time.sleep(0.5)
+        return results
+
+    def _analyze_chunk(self, items, category):
+        if not self.client:
+            return self._keyword_fallback(items)
+
+        cat_name = category.replace("_", " ").title()
+        cat_desc = self.CAT_DESC.get(category, "temas generales de e-commerce")
+
+        items_text = []
+        for idx, item in enumerate(items):
+            title = (item.get("title") or "")[:150]
+            content = (item.get("content") or "")[:300]
+            items_text.append(f"{idx}. Titulo: \"{title}\"\n   Contenido: \"{content}\"")
+
+        prompt = f"""Eres un analista de e-commerce para Latinoamerica. Analiza estos {len(items)} posts sobre "{cat_name}" ({cat_desc}) y extrae las preguntas o dudas que los usuarios plantean.
+
+Para CADA post que contenga una duda relevante, devolve un objeto en el JSON array. Ignora posts sin dudas claras.
+
+Cada objeto debe tener:
+- "item_index": el numero de indice del post (0, 1, 2, etc.)
+- "pregunta": la pregunta o duda extraida (max 200 chars)
+- "categoria": "{category}" (usa siempre esta categoria exacta)
+- "confianza": 0.0 a 1.0
+- "pais": el pais al que se refiere el contenido. Si no es claro, usa null. Valores posibles: argentina, brasil, colombia, mexico, paraguay, otros_latam
+
+Respondé SOLO con un JSON array. Ejemplo:
+[{{"item_index": 0, "pregunta": "Como trackear mi envio?", "categoria": "{category}", "confianza": 0.9, "pais": "argentina"}}]
+Si ningun post tiene dudas relevantes, devolve [].
+
+Posts:
+{chr(10).join(items_text)}
+"""
+        for attempt in range(2):
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.1,
+                    max_tokens=3000,
+                )
+                raw = response.choices[0].message.content if response.choices else None
+                if not raw:
+                    break
+                data = _safe_parse_json(raw)
+                if not isinstance(data, list):
+                    break
+                return self._map_results(data, items)
+            except RateLimitError as e:
+                msg = str(e)
+                if "tokens per day" in msg or "over capacity" in msg or "503" in msg:
+                    break
+                wait = self._parse_retry_after(msg)
+                logger.warning(f"Rate limit en batch analyzer, esperando {wait}s...")
+                time.sleep(wait)
+            except Exception:
+                break
+        return self._keyword_fallback(items)
+
+    def _map_results(self, data, items):
+        results = []
+        for entry in data:
+            if not isinstance(entry, dict):
+                continue
+            idx = entry.get("item_index")
+            if idx is None or not isinstance(idx, int) or idx < 0 or idx >= len(items):
+                continue
+            item = items[idx]
+            detected_pais = entry.get("pais") or None
+            if detected_pais and detected_pais.lower() not in self.PAISES_LATAM:
+                detected_pais = None
+            if not detected_pais:
+                text = f"{item.get('title', '')} {item.get('content', '')}"
+                geo = _mentioned_geo(text)
+                for p in self.PAISES_LATAM:
+                    if p in geo:
+                        detected_pais = p
+                        break
+            results.append({
+                "item_id": item.get("id"),
+                "question": entry.get("pregunta", ""),
+                "category": entry.get("categoria", category) or category,
+                "confidence": entry.get("confianza", 0.5),
+                "model_used": self.model or "batch_ai",
+                "detected_pais": detected_pais,
+                "title": item.get("title", ""),
+                "url": item.get("url", ""),
+                "source_type": item.get("source_type", "unknown"),
+                "source_name": item.get("source_name", ""),
+            })
+        return results
+
+    def _keyword_fallback(self, items):
+        results = []
+        for item in items:
+            text = f"{item.get('title', '')} {item.get('content', '')}"
+            cat = _categorize_by_keywords(text)
+            geo = _mentioned_geo(text)
+            detected_pais = None
+            for p in self.PAISES_LATAM:
+                if p in geo:
+                    detected_pais = p
+                    break
+            results.append({
+                "item_id": item.get("id"),
+                "question": (item.get("title") or text)[:200],
+                "category": cat,
+                "confidence": 0.6 if cat != "otros" else 0.3,
+                "model_used": "keyword_fallback",
+                "detected_pais": detected_pais,
+                "title": item.get("title", ""),
+                "url": item.get("url", ""),
+                "source_type": item.get("source_type", "unknown"),
+                "source_name": item.get("source_name", ""),
+            })
+        return results
+
+    def _parse_retry_after(self, error_msg):
+        msg = str(error_msg)
+        match = re.search(r"try again in (\d+)m([0-9.]+)?s", msg)
+        if match:
+            return int(match.group(1)) * 60 + float(match.group(2) or 0)
+        match = re.search(r"try again in ([0-9.]+)s", msg)
+        if match:
+            return float(match.group(1))
+        return 60
