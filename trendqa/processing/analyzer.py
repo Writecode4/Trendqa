@@ -5,7 +5,6 @@ import re
 import time
 from collections import Counter
 from groq import Groq, RateLimitError
-from trendqa.dashboard import _mentioned_geo
 
 from .normalize import TextNormalizer
 
@@ -431,6 +430,7 @@ class BatchQuestionAnalyzer:
         return results
 
     def _analyze_chunk(self, items, category):
+        from trendqa.dashboard import _mentioned_geo
         if not self.client:
             return self._keyword_fallback(items)
 
@@ -519,6 +519,7 @@ Posts:
         return results
 
     def _keyword_fallback(self, items):
+        from trendqa.dashboard import _mentioned_geo
         results = []
         for item in items:
             text = f"{item.get('title', '')} {item.get('content', '')}"
