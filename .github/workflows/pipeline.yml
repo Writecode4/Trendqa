@@ -19,6 +19,23 @@ jobs:
           python-version: "3.11"
           cache: pip
 
+      - name: Debug - test SSH connectivity
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
+        run: |
+          echo "SSH_HOST=${SSH_HOST:-VACIO} SSH_USER=${SSH_USER:-VACIO} SSH_PORT=${SSH_PORT:-VACIO}"
+          echo "SSH_KEY length: $(echo "$SSH_PRIVATE_KEY" | wc -c)"
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa_temp
+          chmod 600 ~/.ssh/id_rsa_temp
+          echo "--- TEST CLAVE ---"
+          ssh-keygen -y -f ~/.ssh/id_rsa_temp 2>&1 || echo "CLAVE INVALIDA"
+          echo "--- TEST SSH ---"
+          ssh -v -o StrictHostKeyChecking=no -o ConnectTimeout=15 -p ${SSH_PORT:-21098} ${SSH_USER}@${SSH_HOST} "echo OK_CONECTADO" 2>&1 || echo "SSH_EXIT_CODE=$?"
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
