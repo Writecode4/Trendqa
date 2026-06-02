@@ -272,7 +272,7 @@ class Database:
                 item.get("content"), item.get("url"), item.get("author"),
                 item.get("created_utc"), item.get("created_at"),
                 item.get("raw_json"), item.get("item_type", "post"),
-                item.get("topic", ""), item.get("pais", "paraguay"),
+                item.get("topic", ""), item.get("pais") or "",
             ))
             conn.commit()
             return item.get("id")

@@ -58,7 +58,7 @@ class ReportGenerator:
     def _recommendation(self, category: str, source: str) -> str:
         return f"Priorizar el tema {category.lower()} y validar la señal con {source}, luego convertirla en acciones concretas."
 
-    def build_summary(self, topic: str = "E-commerce Paraguay", period_label: str = "últimos 90 días") -> Dict[str, Any]:
+    def build_summary(self, topic: str = "E-commerce", period_label: str = "últimos 90 días") -> Dict[str, Any]:
         """Genera resumen con caché opcional, límites estrictos y fallback seguro."""
         
         # ✅ 1. Obtener datos de DB con protección
@@ -156,7 +156,7 @@ class ReportGenerator:
             "recommendation": self._recommendation(top_category, top_source)
         }
 
-    def build_summary_cached(self, topic: str = "E-commerce Paraguay", period_label: str = "últimos 90 días", ttl: int = 900):
+    def build_summary_cached(self, topic: str = "E-commerce", period_label: str = "últimos 90 días", ttl: int = 900):
         """
         Versión con caché automático (usa trendqa.cache si está disponible).
         Útil para endpoints que se llaman frecuentemente con mismos parámetros.
