@@ -22,15 +22,15 @@ class TunnelManager:
         if ssh_pkey:
             ssh_pkey = ssh_pkey.replace("\\n", "\n")
             key_file = io.StringIO(ssh_pkey)
-            for KeyClass in (paramiko.Ed25519Key, paramiko.RSAKey, paramiko.ECDSAKey):
-                try:
-                    key_file.seek(0)
-                    return KeyClass.from_private_key(key_file)
-                except paramiko.SSHException:
-                    continue
-            raise paramiko.SSHException("No se pudo cargar la clave SSH privada")
+            try:
+                return paramiko.PKey.from_private_key(key_file)
+            except Exception as e:
+                raise paramiko.SSHException(f"No se pudo cargar la clave SSH privada: {e}")
         else:
-            return paramiko.RSAKey.from_private_key_file(os.getenv("SSH_KEY_PATH"))
+            try:
+                return paramiko.RSAKey.from_private_key_file(os.getenv("SSH_KEY_PATH"))
+            except Exception as e:
+                raise paramiko.SSHException(f"No se pudo cargar la clave SSH desde archivo: {e}")
 
     def _create_tunnel(self):
         from sshtunnel import SSHTunnelForwarder
