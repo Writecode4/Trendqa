@@ -337,15 +337,25 @@ _SPORTS_PATTERNS = [
 _SPORTS_CORE = _get_compiled_regex("sports", _SPORTS_PATTERNS)
 
 _CRIME_PATTERNS = [
-    r"\bhomicidio\b", r"\basesinato\b",
-    r"\bsecuestro\b", r"\bsecuestr[oa]r\b",
+    r"\bhomicidio\b", r"\basesinat[oó]\b", r"\basesin[ao]\b",
+    r"\bsecuestr[oaoá]\b",
     r"\bnarcotr[áa]fico\b", r"\bnarco\b", r"\bdrogas\b",
     r"\bbalacera\b", r"\btiroteo\b",
     r"\bnoticia\s+roja\b",
-    r"\bcrimen\b",
+    r"\bcrimen\b", r"\bcriminal\b",
     r"\bc[áa]rcel\b", r"\bprisi[óo]n\b",
     r"\bdetienen\b", r"\bdetenid[ao]\b", r"\bdetenci[óo]n\b",
     r"\baccidente\s+(?:de\s+tr[áa]nsito|fatal|a[ée]reo|ferroviario)\b",
+    r"\bpolicial\b", r"\bpolic[íi]a\b",
+    r"\brobo\b", r"\b(r?obad[ao]|robar)\b",
+    r"\bhurt[oó]\b",
+    r"\basalt[oó]\b", r"\basaltant\w*\b",
+    r"\bdelit[oó]\b", r"\bdelincuent\w*\b", r"\bdelincuencia\b",
+    r"\bviolenci[ao]\b",
+    r"\bpandill[ao]\b", r"\bband[ao]\s+criminal\b",
+    r"\bsicariato\b", r"\bsicari[oó]\b",
+    r"\bfeminicidi[oó]\b",
+    r"\bextorsi[óo]n\b",
 ]
 _CRIME_CORE = _get_compiled_regex("crime", _CRIME_PATTERNS)
 
