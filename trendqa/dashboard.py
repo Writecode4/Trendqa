@@ -973,9 +973,11 @@ def dashboard():
         return render_template("dashboard.html", summary={"error": True, "message": f"País '{pais}' no soportado aún."})
 
     key = f"dashboard:{q}:{pais}"
-    cached = _cache_get(key)
-    if cached:
-        return render_template("dashboard.html", summary=cached)
+    refresh = request.args.get("refresh") == "1"
+    if not refresh:
+        cached = _cache_get(key)
+        if cached:
+            return render_template("dashboard.html", summary=cached)
 
     db = Database()
     topic_key = f"{q}_{pais}"
