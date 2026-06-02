@@ -496,8 +496,6 @@ Posts:
                 continue
             item = items[idx]
             detected_pais = entry.get("pais") or None
-            if detected_pais and detected_pais.lower() not in self.PAISES_LATAM:
-                detected_pais = None
             if not detected_pais:
                 text = f"{item.get('title', '')} {item.get('content', '')}"
                 geo = _mentioned_geo(text)
@@ -530,6 +528,8 @@ Posts:
                 if p in geo:
                     detected_pais = p
                     break
+            if not detected_pais:
+                detected_pais = "otros_latam"
             results.append({
                 "item_id": item.get("id"),
                 "question": (item.get("title") or text)[:200],

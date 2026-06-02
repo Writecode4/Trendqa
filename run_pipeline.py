@@ -150,9 +150,7 @@ def save_batch(db, items, questions, topic):
 
     saved = 0
     for q in questions:
-        detected_pais = q.get("detected_pais")
-        if not detected_pais:
-            continue
+        detected_pais = q.get("detected_pais") or "otros_latam"
         topic_key = f"{topic}_{detected_pais}"
         db.save_question(
             item_id=id_map.get(q["item_id"], q["item_id"]),
@@ -169,6 +167,7 @@ def save_batch(db, items, questions, topic):
 def run():
     logger.info("=== Iniciando pipeline LATAM ===")
     db = Database()
+    db.prune_old_data(days=90)
     analyzer = BatchQuestionAnalyzer()
     total_items = 0
     total_questions = 0
